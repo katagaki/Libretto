@@ -140,10 +140,13 @@ struct FloatingActionBar: View {
                 .foregroundStyle(isOn ? Color.accentColor : .primary)
                 // A round highlight, so an active control reads as a lit key.
                 .background(isOn ? Color.accentColor.opacity(0.2) : .clear, in: .circle)
+                // The whole key, not just the glyph's ink, takes the tap.
+                .contentShape(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
         .accessibilityIdentifier("action.\(symbol)")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     /// A button that opens a panel and acts as that panel's zoom source.

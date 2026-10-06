@@ -98,6 +98,7 @@ struct FormatPanel: View {
                 .frame(width: 46, height: 46)
                 .background(isOn ? Color.accentColor.opacity(0.2) : .clear, in: .circle)
                 .foregroundStyle(isOn ? Color.accentColor : .primary)
+                .contentShape(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
