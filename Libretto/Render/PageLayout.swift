@@ -92,13 +92,17 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     func layOutPages(in container: NSTextContainer, startingWith estimate: Int) -> Int {
         var pages = max(1, estimate)
         if container.exclusionPaths.count != pages { configure(container, pages: pages) }
+        var reached = -1
         for _ in 0..<64 {
             ensureLayout(for: container)
             let used = usedRect(for: container).maxY
             let needed = geometry.pageCount(forUsedHeight: used)
-            let laidOut = glyphRange(for: container)
-            let fits = NSMaxRange(laidOut) >= numberOfGlyphs
-            if fits, needed <= pages { return needed }
+            let laidOut = NSMaxRange(glyphRange(for: container))
+            if laidOut >= numberOfGlyphs, needed <= pages { return needed }
+            // A line taller than a page fits on none, and layout stops at it:
+            // more pages only lay the same text out again.
+            if laidOut >= numberOfGlyphs || laidOut == reached { return max(needed, 1) }
+            reached = laidOut
             pages = max(needed, pages) + max(4, pages / 4)
             configure(container, pages: pages)
         }
