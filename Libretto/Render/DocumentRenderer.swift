@@ -97,7 +97,9 @@ enum DocumentRenderer {
             guard !string.isEmpty else { continue }
             let piece = NSMutableAttributedString(string: string, attributes: attributes)
             if !pending.isEmpty {
-                piece.addAttribute(.librettoMarkers, value: MarkersBox(pending), range: NSRange(location: 0, length: 1))
+                // The whole first character, which may be more than one UTF-16 unit.
+                let first = (piece.string as NSString).rangeOfComposedCharacterSequence(at: 0)
+                piece.addAttribute(.librettoMarkers, value: MarkersBox(pending), range: first)
                 pending = []
             }
             output.append(piece)

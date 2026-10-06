@@ -139,7 +139,10 @@ struct AstralTextTests {
     func astral() {
         let document = { () -> WordDocument in
             var document = WordDocument()
-            document.body = [.paragraph(Paragraph(text: "Smile 😀, math 𝑆, flag 🇯🇵."))]
+            let bookmark = Inline(.paragraphChild(xml: "<w:bookmarkStart w:id=\"0\" w:name=\"a\"/>", display: nil))
+            document.body = [.paragraph(Paragraph(inlines: [
+                Inline(.text("Smile 😀, math ")), bookmark, Inline(.text("𝑆, flag 🇯🇵.")),
+            ]))]
             return document
         }()
         let rendered = DocumentRenderer.render(
@@ -148,6 +151,8 @@ struct AstralTextTests {
         let read = AttributedReader.blocks(
             from: rendered.string, finalParagraph: rendered.finalParagraph, trailingMarkers: rendered.trailingMarkers
         )
+        // A marker riding on a character made of two UTF-16 units included.
+        #expect(read.blocks == document.body)
         #expect(read.blocks.first?.paragraphs.first?.plainText == "Smile 😀, math 𝑆, flag 🇯🇵.")
     }
 }
