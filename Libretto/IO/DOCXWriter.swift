@@ -167,6 +167,7 @@ struct BodyWriter {
         output += "</w:tblGrid>"
         for row in table.rows {
             output += "<w:tr>"
+            output += row.exceptionsXML ?? ""
             output += row.preservedPropertiesXML ?? ""
             var column = 0
             for cell in row.cells {

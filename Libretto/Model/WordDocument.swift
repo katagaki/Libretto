@@ -436,6 +436,8 @@ struct Table: Equatable, Sendable, Identifiable {
 struct TableRow: Equatable, Sendable, Identifiable {
     var id = UUID()
     var cells: [TableCell]
+    /// `w:tblPrEx`: table properties this row overrides.
+    var exceptionsXML: String?
     var preservedPropertiesXML: String?
     var isHeader = false
 }

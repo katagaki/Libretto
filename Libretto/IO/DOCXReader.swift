@@ -323,6 +323,7 @@ private final class ReadContext {
         let rows = element.children(named: "tr").map { row in
             TableRow(
                 cells: row.children(named: "tc").map(cell),
+                exceptionsXML: row.firstChild(named: "tblPrEx").flatMap { serialize($0) },
                 preservedPropertiesXML: row.firstChild(named: "trPr").flatMap { serialize($0) },
                 isHeader: row.firstChild(named: "trPr")?.firstChild(named: "tblHeader") != nil
             )
