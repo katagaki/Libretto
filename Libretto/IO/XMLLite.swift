@@ -174,6 +174,10 @@ final class XMLElement {
 }
 
 enum XMLLite {
+    /// Far deeper than documents go — a table in a table in a table is
+    /// already rare — and shallow enough to walk without running out of stack.
+    static let maximumDepth = 512
+
     struct ParseError: LocalizedError {
         var message: String
         var errorDescription: String? { message }
@@ -205,6 +209,13 @@ enum XMLLite {
             _ parser: XMLParser, didStartElement elementName: String,
             namespaceURI: String?, qualifiedName: String?, attributes: [String: String]
         ) {
+            // Everything that walks the tree recurses, so a file nested deeper
+            // than any real one would run it out of stack.
+            guard stack.count < XMLLite.maximumDepth else {
+                failure = "The document is nested too deeply to open."
+                parser.abortParsing()
+                return
+            }
             var stripped: [String: String] = [:]
             stripped.reserveCapacity(attributes.count)
             for (key, value) in attributes { stripped[localName(key)] = value }
