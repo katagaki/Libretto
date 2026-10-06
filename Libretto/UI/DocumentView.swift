@@ -61,8 +61,12 @@ struct DocumentView: View {
                         }
                 }
                 .navigationTransition(.zoom(sourceID: panel, in: panelTransition))
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+                // Half height only: the document stays in view beside the
+                // panel, so a change can be seen as it is made. Longer panels
+                // scroll within the sheet rather than growing it.
+                .presentationDetents([.medium])
+                .presentationContentInteraction(.scrolls)
+                .presentationDragIndicator(.hidden)
                 .presentationBackground(.regularMaterial)
             }
             .photosPicker(isPresented: $state.isPickingPhoto, selection: $photo, matching: .images)
