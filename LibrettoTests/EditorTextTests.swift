@@ -132,3 +132,22 @@ struct EditorTextTests {
         #expect(tables.count == 1)
     }
 }
+
+@Suite("Editor text, beyond the Basic Multilingual Plane")
+struct AstralTextTests {
+    @Test("Emoji and mathematical letters read back whole")
+    func astral() {
+        let document = { () -> WordDocument in
+            var document = WordDocument()
+            document.body = [.paragraph(Paragraph(text: "Smile 😀, math 𝑆, flag 🇯🇵."))]
+            return document
+        }()
+        let rendered = DocumentRenderer.render(
+            document.body, context: RenderContext(document: document, scheme: .light, images: ImageStore())
+        )
+        let read = AttributedReader.blocks(
+            from: rendered.string, finalParagraph: rendered.finalParagraph, trailingMarkers: rendered.trailingMarkers
+        )
+        #expect(read.blocks.first?.paragraphs.first?.plainText == "Smile 😀, math 𝑆, flag 🇯🇵.")
+    }
+}

@@ -136,10 +136,15 @@ enum AttributedReader {
             let format = run?.format ?? RunFormat()
             let hyperlink = run?.hyperlink
 
-            var pending = ""
+            // UTF-16 units, gathered whole: a character outside the Basic
+            // Multilingual Plane, an emoji say, is two of them.
+            var pending: [unichar] = []
             func flushText() {
-                if !pending.isEmpty { result.append(Inline(.text(pending), format: format, hyperlink: hyperlink)) }
-                pending = ""
+                if !pending.isEmpty {
+                    let text = String(utf16CodeUnits: pending, count: pending.count)
+                    result.append(Inline(.text(text), format: format, hyperlink: hyperlink))
+                }
+                pending = []
             }
             for offset in 0..<range.length {
                 let unit = string.character(at: range.location + offset)
@@ -157,7 +162,7 @@ enum AttributedReader {
                     // An attachment from elsewhere, which there is no part for.
                     flushText()
                 default:
-                    pending += String(utf16CodeUnits: [unit], count: 1)
+                    pending.append(unit)
                 }
             }
             flushText()
