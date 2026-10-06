@@ -48,7 +48,7 @@ enum TableRenderer {
                 let fill = cell.shadingHex.flatMap { AdaptiveColor.uiColor(hex: $0, for: context.scheme, isText: false) }
                 cells.append((CGRect(x: x, y: 0, width: width, height: 0), text, fill, continues))
             }
-            height = min(height, context.contentHeight * 0.95)
+            height = min(height, context.contentHeight * 0.9)
             let isLastRow = rowIndex == table.rows.count - 1
 
             let format = UIGraphicsImageRendererFormat.preferred()
@@ -138,7 +138,7 @@ enum TableRenderer {
                 with: CGSize(width: width - 12, height: .greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil
             )
-            let size = CGSize(width: width, height: min(ceil(bounds.height) + 4, context.contentHeight * 0.95))
+            let size = CGSize(width: width, height: min(ceil(bounds.height) + 4, context.contentHeight * 0.9))
             return UIGraphicsImageRenderer(size: size, format: format).image { renderer in
                 UIColor.systemGray.withAlphaComponent(0.12).setFill()
                 renderer.cgContext.fill(CGRect(origin: .zero, size: size))

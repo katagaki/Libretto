@@ -87,7 +87,10 @@ enum DocumentRenderer {
             case .pageBreak:
                 string = TextCharacters.pageBreak
             case .image(let image):
-                attributes[.attachment] = imageAttachment(image, inline: inline, context: context)
+                attributes[.attachment] = imageAttachment(
+                    image, inline: inline, context: context,
+                    maximumHeight: maximumImageHeight(in: base[.paragraphStyle] as? NSParagraphStyle, context: context)
+                )
                 string = TextCharacters.attachment
             case .runChild(_, let display), .paragraphChild(_, let display):
                 let shown = display ?? ""
@@ -127,13 +130,25 @@ enum DocumentRenderer {
         return attributes
     }
 
-    static func imageAttachment(_ image: InlineImage, inline: Inline, context: RenderContext) -> ImageAttachment {
+    /// How tall a picture can be and still have its line fit on a page:
+    /// the line is taller than the picture by the paragraph's spacing, and
+    /// stretched by its line height.
+    static func maximumImageHeight(in style: NSParagraphStyle?, context: RenderContext) -> CGFloat {
+        let spacing = (style?.paragraphSpacingBefore ?? 0) + (style?.paragraphSpacing ?? 0)
+        let multiple = max(1, style?.lineHeightMultiple ?? 1)
+        return max(24, (context.contentHeight - spacing) / multiple * 0.9)
+    }
+
+    static func imageAttachment(
+        _ image: InlineImage, inline: Inline, context: RenderContext, maximumHeight: CGFloat? = nil
+    ) -> ImageAttachment {
         let attachment = ImageAttachment()
         attachment.inline = inline
         attachment.image = context.images.image(forRelationship: image.relationshipID, in: context.package)
             ?? UIImage(systemName: "photo")
         // Never wider than the text, nor taller than a page, or it could not be laid out at all.
-        let scale = min(1, context.contentWidth / max(image.width, 1), context.contentHeight * 0.95 / max(image.height, 1))
+        let tallest = maximumHeight ?? context.contentHeight * 0.75
+        let scale = min(1, context.contentWidth / max(image.width, 1), tallest / max(image.height, 1))
         attachment.bounds = CGRect(x: 0, y: 0, width: image.width * scale, height: image.height * scale)
         return attachment
     }
