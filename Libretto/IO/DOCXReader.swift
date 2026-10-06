@@ -122,11 +122,19 @@ private final class ReadContext {
                 paragraph.leadingXML = pending
                 pending = []
                 blocks.append(.paragraph(paragraph))
-            case "tbl":
+            case "tbl" where Self.isEditableTable(element):
                 var table = table(from: element)
                 table.leadingXML = pending
                 pending = []
                 blocks.append(.table(table))
+            case "tbl":
+                // Rows inside content controls, tracked row changes and the
+                // like: kept whole and shown, rather than rebuilt without them.
+                guard let xml = serialize(element) else { continue }
+                let text = element.children.filter { $0.name != "tblPr" && $0.name != "tblGrid" }
+                    .map { HeaderFooterReader.plainText(of: $0) }.filter { !$0.isEmpty }.joined(separator: "\n")
+                blocks.append(.preserved(PreservedBlock(xml: xml, displayText: text, kind: .other, leadingXML: pending)))
+                pending = []
             case "sdt":
                 report.insert(.contentControls)
                 guard let xml = serialize(element) else { continue }
@@ -312,6 +320,16 @@ private final class ReadContext {
     }
 
     // MARK: Tables
+
+    /// Whether a table holds only what the table model keeps: rows of cells.
+    static func isEditableTable(_ element: XMLElement) -> Bool {
+        let rowLevel: Set<String> = ["tblPr", "tblGrid", "tr"]
+        let cellLevel: Set<String> = ["tblPrEx", "trPr", "tc"]
+        let rows = element.children(named: "tr")
+        return !rows.isEmpty
+            && element.children.allSatisfy { rowLevel.contains($0.name) }
+            && rows.allSatisfy { $0.children.allSatisfy { cellLevel.contains($0.name) } }
+    }
 
     func table(from element: XMLElement) -> Table {
         let tblPr = element.firstChild(named: "tblPr")
