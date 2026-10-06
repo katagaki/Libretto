@@ -357,6 +357,9 @@ private final class ReadContext {
             styleID: styleID,
             hasBorders: explicitBorders ?? styles.tableHasBorders(styleID: styleID)
         )
+        table.borderColorHex = tblPr?.firstChild(named: "tblBorders").flatMap(PropertyReader.borderColor)
+            ?? styles.tableBorderColor(styleID: styleID)
+        table.look = PropertyReader.tableLook(tblPr?.firstChild(named: "tblLook"))
         table.originalXML = serialize(element)
         table.originalRows = rows
         table.originalGrid = grid
@@ -374,9 +377,7 @@ private final class ReadContext {
         if let merge = tcPr?.firstChild(named: "vMerge") {
             cell.verticalMerge = merge.attribute("val") == "restart" ? .restart : .continue
         }
-        if let fill = tcPr?.firstChild(named: "shd")?.attribute("fill"), fill != "auto" {
-            cell.shadingHex = fill
-        }
+        cell.shadingHex = tcPr?.firstChild(named: "shd").flatMap(PropertyReader.fill)
         return cell
     }
 }
@@ -450,6 +451,43 @@ enum PropertyReader {
         return result
     }
 
+    /// The colour of the first border that has one.
+    static func borderColor(_ borders: XMLElement) -> String? {
+        borders.children.lazy.compactMap { border -> String? in
+            guard let color = border.attribute("color"), color != "auto",
+                  !["nil", "none"].contains(border.attribute("val") ?? "nil") else { return nil }
+            return color.uppercased()
+        }.first
+    }
+
+    /// A shading's fill, unless it is automatic.
+    static func fill(_ shading: XMLElement) -> String? {
+        guard let fill = shading.attribute("fill"), fill != "auto" else { return nil }
+        return fill.uppercased()
+    }
+
+    /// `w:tblLook`, spelled either as flags in a hex value or as attributes.
+    static func tableLook(_ element: XMLElement?) -> TableLook {
+        var look = TableLook()
+        guard let element else { return look }
+        if let value = element.attribute("val").flatMap({ Int($0, radix: 16) }) {
+            look.firstRow = value & 0x0020 != 0
+            look.lastRow = value & 0x0040 != 0
+            look.firstColumn = value & 0x0080 != 0
+            look.lastColumn = value & 0x0100 != 0
+            look.bandedRows = value & 0x0200 == 0
+            look.bandedColumns = value & 0x0400 == 0
+        }
+        func flag(_ name: String) -> Bool? { element.attribute(name).map { $0 == "1" || $0 == "true" || $0 == "on" } }
+        look.firstRow = flag("firstRow") ?? look.firstRow
+        look.lastRow = flag("lastRow") ?? look.lastRow
+        look.firstColumn = flag("firstColumn") ?? look.firstColumn
+        look.lastColumn = flag("lastColumn") ?? look.lastColumn
+        look.bandedRows = flag("noHBand").map(!) ?? look.bandedRows
+        look.bandedColumns = flag("noVBand").map(!) ?? look.bandedColumns
+        return look
+    }
+
     static func hasVisibleBorders(_ borders: XMLElement) -> Bool {
         borders.children.contains { border in
             let value = border.attribute("val") ?? "nil"
@@ -507,6 +545,22 @@ enum StyleReader {
         }
         if let borders = element.firstDescendant(atPath: "tblPr/tblBorders") {
             style.hasTableBorders = PropertyReader.hasVisibleBorders(borders)
+            style.tableBorderColorHex = PropertyReader.borderColor(borders)
+        }
+        if kind == .table {
+            var whole = TableCondition(runStyle: style.runStyle, paragraphProperties: style.paragraphProperties)
+            whole.fillHex = element.firstDescendant(atPath: "tcPr/shd").flatMap(PropertyReader.fill)
+            style.tableConditions[.wholeTable] = whole
+            for part in element.children(named: "tblStylePr") {
+                guard let type = part.attribute("type").flatMap(TableCondition.Kind.init(rawValue:)) else { continue }
+                var condition = TableCondition()
+                if let rPr = part.firstChild(named: "rPr") { condition.runStyle = PropertyReader.runStyle(from: rPr) }
+                if let pPr = part.firstChild(named: "pPr") {
+                    condition.paragraphProperties = PropertyReader.paragraphProperties(from: pPr)
+                }
+                condition.fillHex = part.firstDescendant(atPath: "tcPr/shd").flatMap(PropertyReader.fill)
+                style.tableConditions[type] = condition
+            }
         }
         return style
     }

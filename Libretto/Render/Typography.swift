@@ -11,6 +11,9 @@ struct RenderContext: Sendable {
     var contentWidth: CGFloat
     var contentHeight: CGFloat
     var images: ImageStore
+    /// Six-digit RGB of what the text sits on, such as a shaded table cell,
+    /// so its colour adapts against that rather than the page.
+    var backgroundHex: String?
 
     init(document: WordDocument, scheme: ColorScheme, images: ImageStore) {
         styles = document.styles
@@ -64,8 +67,9 @@ enum Typography {
         if let highlightHex {
             attributes[.backgroundColor] = AdaptiveColor.uiColor(hex: highlightHex, for: context.scheme, isText: false)
         }
+        let backgroundHex = highlightHex ?? context.backgroundHex
         attributes[.foregroundColor] = AdaptiveColor.uiTextColor(
-            hex: style.colorHex ?? (highlightHex != nil ? "000000" : nil), on: highlightHex, for: context.scheme
+            hex: style.colorHex ?? (backgroundHex != nil ? "000000" : nil), on: backgroundHex, for: context.scheme
         ) ?? context.defaultTextColor
 
         if style.underline == true { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }

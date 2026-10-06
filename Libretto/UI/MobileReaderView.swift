@@ -66,6 +66,8 @@ struct MobileParagraph {
 
 struct MobileTable {
     var rows: [[AttributedString]]
+    /// Each cell's shading, its own or its table style's.
+    var fills: [[Color?]]
     var columnCount: Int
     var hasBorders: Bool
 }
@@ -106,13 +108,29 @@ struct MobileLayout {
                     lastWasSpacer = false
                 }
             case .table(let table):
-                let rows = table.rows.map { row in
-                    row.cells.map { cell in
-                        cell.verticalMerge == .continue ? AttributedString() : builder.cell(cell)
+                let appearances = TableStyling.appearances(of: table, styles: document.styles)
+                var rows: [[AttributedString]] = []
+                var fills: [[Color?]] = []
+                for (rowIndex, row) in table.rows.enumerated() {
+                    var texts: [AttributedString] = []
+                    var colors: [Color?] = []
+                    for (cellIndex, cell) in row.cells.enumerated() {
+                        let appearance = appearances[rowIndex][cellIndex]
+                        let styled = MobileTextBuilder(
+                            context: TableStyling.context(context, for: appearance),
+                            readerSize: builder.readerSize, documentSize: builder.documentSize
+                        )
+                        texts.append(cell.verticalMerge == .continue ? AttributedString() : styled.cell(cell))
+                        colors.append(appearance.fillHex.flatMap {
+                            AdaptiveColor.resolve(hex: $0, for: scheme, isText: false)
+                        })
                     }
+                    rows.append(texts)
+                    fills.append(colors)
                 }
                 items.append(MobileItem(id: id, content: .table(MobileTable(
-                    rows: rows, columnCount: rows.map(\.count).max() ?? 0, hasBorders: table.hasBorders
+                    rows: rows, fills: fills, columnCount: rows.map(\.count).max() ?? 0,
+                    hasBorders: table.hasBorders
                 ))))
                 lastWasSpacer = false
             case .preserved(let preserved):
@@ -304,12 +322,14 @@ private struct MobileTableView: View {
                 GridRow {
                     ForEach(0..<table.columnCount, id: \.self) { column in
                         let text = column < table.rows[row].count ? table.rows[row][column] : AttributedString()
+                        let fill = column < table.fills[row].count ? table.fills[row][column] : nil
                         Text(text)
                             .font(.subheadline)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
                             .frame(width: columnWidth, alignment: .topLeading)
                             .frame(maxWidth: columnWidth == nil ? .infinity : nil, maxHeight: .infinity, alignment: .topLeading)
+                            .background(fill ?? .clear)
                             .border(Color.secondary.opacity(table.hasBorders ? 0.5 : 0.2), width: 0.5)
                     }
                 }

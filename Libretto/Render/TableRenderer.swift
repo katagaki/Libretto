@@ -24,20 +24,23 @@ enum TableRenderer {
         let widths = columnWidths(table, availableWidth: context.contentWidth)
         let tableWidth = widths.reduce(0, +)
         let ink = context.defaultTextColor
-        let lineColor = table.hasBorders ? ink.withAlphaComponent(0.75) : ink.withAlphaComponent(0.18)
+        let styledColor = table.borderColorHex.flatMap { AdaptiveColor.uiColor(hex: $0, for: context.scheme, isText: true) }
+        let lineColor = table.hasBorders ? (styledColor ?? ink.withAlphaComponent(0.75)) : ink.withAlphaComponent(0.18)
+        let appearances = TableStyling.appearances(of: table, styles: context.styles)
 
         return table.rows.enumerated().map { rowIndex, row in
             // Lay the row's cells out first: their text decides its height.
             var column = 0
             var cells: [(frame: CGRect, text: NSAttributedString?, fill: UIColor?, continues: Bool)] = []
             var height: CGFloat = 14
-            for cell in row.cells {
+            for (cellIndex, cell) in row.cells.enumerated() {
+                let appearance = appearances[rowIndex][cellIndex]
                 let span = max(1, cell.gridSpan)
                 let x = widths.prefix(column).reduce(0, +)
                 let width = widths.dropFirst(column).prefix(span).reduce(0, +)
                 column += span
                 let continues = cell.verticalMerge == .continue
-                let text = continues ? nil : cellText(cell, context: context)
+                let text = continues ? nil : cellText(cell, context: TableStyling.context(context, for: appearance))
                 if let text {
                     let bounds = text.boundingRect(
                         with: CGSize(width: max(1, width - horizontalPadding * 2), height: .greatestFiniteMagnitude),
@@ -45,7 +48,7 @@ enum TableRenderer {
                     )
                     height = max(height, ceil(bounds.height) + verticalPadding * 2)
                 }
-                let fill = cell.shadingHex.flatMap { AdaptiveColor.uiColor(hex: $0, for: context.scheme, isText: false) }
+                let fill = appearance.fillHex.flatMap { AdaptiveColor.uiColor(hex: $0, for: context.scheme, isText: false) }
                 cells.append((CGRect(x: x, y: 0, width: width, height: 0), text, fill, continues))
             }
             height = min(height, context.contentHeight * 0.9)

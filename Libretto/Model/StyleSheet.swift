@@ -25,6 +25,11 @@ struct StyleSheet: Equatable, Sendable {
         var runStyle = RunStyle()
         /// Whether the table style draws borders.
         var hasTableBorders = false
+        /// Six-digit RGB of the table style's borders.
+        var tableBorderColorHex: String?
+        /// A table style's formatting for parts of the table, by `w:tblStylePr`
+        /// type, with what the style says of the whole table as `wholeTable`.
+        var tableConditions: [TableCondition.Kind: TableCondition] = [:]
 
         enum Kind: String, Sendable {
             case paragraph, character, table, numbering
@@ -73,6 +78,22 @@ struct StyleSheet: Equatable, Sendable {
 
     func tableHasBorders(styleID: String?) -> Bool {
         chain(from: styleID).contains { $0.hasTableBorders }
+    }
+
+    func tableBorderColor(styleID: String?) -> String? {
+        chain(from: styleID).reversed().lazy.compactMap(\.tableBorderColorHex).first
+    }
+
+    /// A table style's conditional formatting, with what a style inherits
+    /// from the one it is based on.
+    func tableConditions(styleID: String?) -> [TableCondition.Kind: TableCondition] {
+        var result: [TableCondition.Kind: TableCondition] = [:]
+        for style in chain(from: styleID) {
+            for (kind, condition) in style.tableConditions {
+                result[kind] = result[kind].map { $0.merged(with: condition) } ?? condition
+            }
+        }
+        return result
     }
 
     // MARK: - Choosing styles
@@ -171,6 +192,44 @@ enum ParagraphStyleChoice: String, CaseIterable, Identifiable, Sendable {
         case .quote: return String(localized: "Style.Quote")
         }
     }
+}
+
+// MARK: - Table styles
+
+/// What a table style does to one part of a table: its header row, its
+/// banded rows, its first column and so on.
+struct TableCondition: Equatable, Sendable {
+    var runStyle = RunStyle()
+    var paragraphProperties = ParagraphProperties()
+    /// Six-digit RGB cell shading.
+    var fillHex: String?
+
+    /// `w:tblStylePr` types, in the order Word applies them, each over the
+    /// ones before it.
+    enum Kind: String, CaseIterable, Sendable {
+        case wholeTable
+        case band1Vert, band2Vert, band1Horz, band2Horz
+        case firstCol, lastCol, firstRow, lastRow
+        case neCell, nwCell, seCell, swCell
+    }
+
+    func merged(with other: TableCondition) -> TableCondition {
+        TableCondition(
+            runStyle: runStyle.merged(with: other.runStyle),
+            paragraphProperties: paragraphProperties.merged(with: other.paragraphProperties),
+            fillHex: other.fillHex ?? fillHex
+        )
+    }
+}
+
+/// Which of its style's conditional formats a table turns on, from `w:tblLook`.
+struct TableLook: Equatable, Sendable {
+    var firstRow = true
+    var lastRow = false
+    var firstColumn = true
+    var lastColumn = false
+    var bandedRows = true
+    var bandedColumns = false
 }
 
 // MARK: - Numbering

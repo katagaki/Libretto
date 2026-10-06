@@ -419,6 +419,9 @@ struct Table: Equatable, Sendable, Identifiable {
     /// Whether the table draws its own borders, rather than relying on
     /// gridlines that only show on screen.
     var hasBorders: Bool
+    /// Six-digit RGB, if the borders have a colour of their own.
+    var borderColorHex: String?
+    var look = TableLook()
     var leadingXML: [String] = []
     /// The table exactly as read, written back verbatim while its rows and
     /// columns are as they were.
