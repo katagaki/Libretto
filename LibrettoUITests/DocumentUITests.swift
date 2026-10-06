@@ -50,7 +50,14 @@ final class DocumentUITests: XCTestCase {
         text.typeText("Libretto keeps your words.")
         capture(app, "typed")
 
-        app.buttons["action.bold"].tap()
+        // A tap synthesised the moment typing stops is dropped before it
+        // reaches the bar; one a moment later, as a finger's would be, is not.
+        sleep(1)
+        let bold = app.buttons["action.bold"]
+        bold.tap()
+        let lit = NSPredicate(format: "isSelected == true")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: lit, evaluatedWith: bold)], timeout: 3), .completed,
+                       "Bold did not light up")
         text.typeText(" Bold words.")
         capture(app, "bold")
 
