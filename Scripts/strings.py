@@ -1,0 +1,148 @@
+"""Builds Libretto's string catalog. Keys Tables already translates reuse its
+translations, so the two apps speak the same words for the same things."""
+import json, sys, os
+
+LANGS = ["en", "ja", "ko", "zh-Hans", "zh-Hant"]
+here = os.path.dirname(os.path.abspath(__file__))
+tables_path = os.path.join(here, "..", "..", "Tables", "Tables", "Support", "Localizable.xcstrings")
+out_path = os.path.join(here, "..", "Libretto", "Support", "Localizable.xcstrings")
+
+S = {
+ "ActionBar.Alignment": ["Alignment", "配置", "정렬", "对齐", "對齊"],
+ "ActionBar.Bullets": ["Bulleted List", "箇条書き", "글머리 기호 목록", "项目符号列表", "項目符號清單"],
+ "ActionBar.DeleteTable": ["Delete Table", "表を削除", "표 삭제", "删除表格", "刪除表格"],
+ "ActionBar.EditTable": ["Edit Table", "表を編集", "표 편집", "编辑表格", "編輯表格"],
+ "ActionBar.Format": ["Format", "書式", "서식", "格式", "格式"],
+ "ActionBar.Insert": ["Insert", "挿入", "삽입", "插入", "插入"],
+ "ActionBar.Numbering": ["Numbered List", "段落番号", "번호 매기기 목록", "编号列表", "編號清單"],
+ "ActionBar.PageSetup": ["Page Setup", "ページ設定", "페이지 설정", "页面设置", "版面設定"],
+ "ActionBar.Paragraph": ["Paragraph", "段落", "단락", "段落", "段落"],
+ "ActionBar.Style": ["Style", "スタイル", "스타일", "样式", "樣式"],
+ "Alert.Picture.Failed": ["The picture couldn’t be loaded.", "画像を読み込めませんでした。", "사진을 불러올 수 없습니다.", "无法载入图片。", "無法載入圖片。"],
+ "Alignment.Center": ["Center", "中央揃え", "가운데 정렬", "居中", "置中"],
+ "Alignment.Justified": ["Justified", "両端揃え", "양쪽 정렬", "两端对齐", "左右對齊"],
+ "Alignment.Left": ["Left", "左揃え", "왼쪽 정렬", "左对齐", "靠左對齊"],
+ "Alignment.Right": ["Right", "右揃え", "오른쪽 정렬", "右对齐", "靠右對齊"],
+ "Block.Preserved.Placeholder": ["Content Libretto can’t show", "Librettoで表示できないコンテンツ", "Libretto에서 표시할 수 없는 콘텐츠", "Libretto 无法显示的内容", "Libretto 無法顯示的內容"],
+ "Document.DefaultName": ["Document", "書類", "문서", "文稿", "文件"],
+ "Error.MissingBody": ["This document has no body to show.", "この書類には表示できる本文がありません。", "이 문서에는 표시할 본문이 없습니다.", "此文稿没有可显示的正文。", "此文件沒有可顯示的內文。"],
+ "Error.MissingMainDocument": ["This file isn’t a Word document.", "このファイルはWord書類ではありません。", "이 파일은 Word 문서가 아닙니다.", "此文件不是 Word 文稿。", "此檔案不是 Word 文件。"],
+ "Format.Section.Highlight": ["Highlight", "蛍光ペン", "형광펜", "突出显示", "螢光筆"],
+ "Format.Subscript": ["Subscript", "下付き", "아래 첨자", "下标", "下標"],
+ "Format.Superscript": ["Superscript", "上付き", "위 첨자", "上标", "上標"],
+ "Highlight.None": ["No highlight", "蛍光ペンなし", "형광펜 없음", "无突出显示", "無螢光筆"],
+ "Highlight.yellow": ["Yellow highlight", "黄色の蛍光ペン", "노란색 형광펜", "黄色突出显示", "黃色螢光筆"],
+ "Highlight.green": ["Green highlight", "緑の蛍光ペン", "초록색 형광펜", "绿色突出显示", "綠色螢光筆"],
+ "Highlight.cyan": ["Turquoise highlight", "水色の蛍光ペン", "청록색 형광펜", "青绿色突出显示", "青綠色螢光筆"],
+ "Highlight.magenta": ["Pink highlight", "ピンクの蛍光ペン", "분홍색 형광펜", "粉红色突出显示", "粉紅色螢光筆"],
+ "Highlight.red": ["Red highlight", "赤の蛍光ペン", "빨간색 형광펜", "红色突出显示", "紅色螢光筆"],
+ "Highlight.blue": ["Blue highlight", "青の蛍光ペン", "파란색 형광펜", "蓝色突出显示", "藍色螢光筆"],
+ "Highlight.lightGray": ["Grey highlight", "灰色の蛍光ペン", "회색 형광펜", "灰色突出显示", "灰色螢光筆"],
+ "Highlight.darkYellow": ["Dark yellow highlight", "濃い黄色の蛍光ペン", "진한 노란색 형광펜", "深黄色突出显示", "深黃色螢光筆"],
+ "Insert.PageBreak": ["Page Break", "改ページ", "페이지 나누기", "分页符", "分頁符號"],
+ "Insert.Picture": ["Picture…", "画像…", "사진…", "图片…", "圖片…"],
+ "Insert.Table": ["Table…", "表…", "표…", "表格…", "表格…"],
+ "InsertTable.Columns": ["Columns: %lld", "列：%lld", "열: %lld", "列：%lld", "欄：%lld"],
+ "InsertTable.Insert": ["Insert Table", "表を挿入", "표 삽입", "插入表格", "插入表格"],
+ "InsertTable.Rows": ["Rows: %lld", "行：%lld", "행: %lld", "行：%lld", "列：%lld"],
+ "Mobile.Edit": ["Edit", "編集", "편집", "编辑", "編輯"],
+ "Mobile.Picture": ["Picture", "画像", "사진", "图片", "圖片"],
+ "Mobile.WordCount": ["%lld words", "%lld語", "%lld단어", "%lld 个词", "%lld 個字詞"],
+ "Notice.UnsupportedFeatures.Message": ["This document uses things Libretto can show but not edit. They’re kept as they are, and saved back with the document. Libretto never runs macros.", "この書類には、Librettoで表示はできても編集できない要素が含まれています。これらはそのまま保持され、書類と一緒に保存されます。Librettoがマクロを実行することはありません。", "이 문서에는 Libretto에서 표시할 수는 있지만 편집할 수 없는 요소가 있습니다. 이러한 요소는 그대로 유지되며 문서와 함께 저장됩니다. Libretto는 매크로를 실행하지 않습니다.", "此文稿包含 Libretto 可以显示但无法编辑的内容。这些内容会原样保留，并随文稿一起存储。Libretto 绝不会运行宏。", "此文件包含 Libretto 可以顯示但無法編輯的內容。這些內容會原樣保留，並隨文件一起儲存。Libretto 絕不會執行巨集。"],
+ "Notice.UnsupportedFeatures.Title": ["Some Parts Are Read-Only", "一部は読み取り専用です", "일부는 읽기 전용입니다", "部分内容为只读", "部分內容為唯讀"],
+ "PageSetup.Landscape": ["Landscape", "横", "가로", "横向", "橫向"],
+ "PageSetup.Margins.Description": ["Top and bottom %1$@, sides %2$@", "上下 %1$@、左右 %2$@", "위아래 %1$@, 양옆 %2$@", "上下 %1$@，左右 %2$@", "上下 %1$@，左右 %2$@"],
+ "PageSetup.Margins.Moderate": ["Moderate", "やや狭い", "보통", "适中", "適中"],
+ "PageSetup.Margins.Narrow": ["Narrow", "狭い", "좁게", "窄", "窄"],
+ "PageSetup.Margins.Normal": ["Normal", "標準", "기본", "常规", "標準"],
+ "PageSetup.Margins.Wide": ["Wide", "広い", "넓게", "宽", "寬"],
+ "PageSetup.Orientation": ["Orientation", "向き", "방향", "方向", "方向"],
+ "PageSetup.Paper": ["Paper Size", "用紙サイズ", "용지 크기", "纸张大小", "紙張大小"],
+ "PageSetup.Paper.Custom": ["Custom (%.0f × %.0f mm)", "カスタム（%.0f × %.0f mm）", "사용자 지정(%.0f × %.0f mm)", "自定（%.0f × %.0f 毫米）", "自訂（%.0f × %.0f 公釐）"],
+ "PageSetup.Paper.Legal": ["US Legal", "US リーガル", "US 리걸", "美国法律用纸", "美國法律用紙"],
+ "PageSetup.Paper.Letter": ["US Letter", "US レター", "US 레터", "美国信纸", "美國信紙"],
+ "PageSetup.Portrait": ["Portrait", "縦", "세로", "纵向", "直向"],
+ "PageSetup.Section.Margins": ["Margins", "余白", "여백", "页边距", "邊界"],
+ "PageSetup.Section.Paper": ["Paper", "用紙", "용지", "纸张", "紙張"],
+ "Panel.Format.Title": ["Format", "書式", "서식", "格式", "格式"],
+ "Panel.InsertTable.Title": ["Insert Table", "表を挿入", "표 삽입", "插入表格", "插入表格"],
+ "Panel.PageSetup.Title": ["Page Setup", "ページ設定", "페이지 설정", "页面设置", "版面設定"],
+ "Panel.Paragraph.Title": ["Paragraph", "段落", "단락", "段落", "段落"],
+ "Panel.Table.Title": ["Table", "表", "표", "表格", "表格"],
+ "Paragraph.Alignment": ["Alignment", "配置", "정렬", "对齐", "對齊"],
+ "Paragraph.Bullets": ["Bullets", "箇条書き", "글머리 기호", "项目符号", "項目符號"],
+ "Paragraph.Indent": ["Indent", "インデント", "들여쓰기", "缩进", "縮排"],
+ "Paragraph.Indent.Decrease": ["Decrease indent", "インデントを減らす", "내어쓰기", "减少缩进", "減少縮排"],
+ "Paragraph.Indent.Increase": ["Increase indent", "インデントを増やす", "들여쓰기", "增加缩进", "增加縮排"],
+ "Paragraph.LineSpacing": ["Line Spacing", "行間", "줄 간격", "行距", "行距"],
+ "Paragraph.Numbering": ["Numbering", "段落番号", "번호 매기기", "编号", "編號"],
+ "Paragraph.Section.Alignment": ["Alignment and Lists", "配置とリスト", "정렬 및 목록", "对齐与列表", "對齊與清單"],
+ "Paragraph.Section.Spacing": ["Spacing", "間隔", "간격", "间距", "間距"],
+ "Paragraph.Section.Style": ["Style", "スタイル", "스타일", "样式", "樣式"],
+ "Paragraph.SpacingAfter": ["After: %lld pt", "段落後：%lld pt", "단락 뒤: %lldpt", "段后：%lld 磅", "段落後：%lld 點"],
+ "Paragraph.SpacingBefore": ["Before: %lld pt", "段落前：%lld pt", "단락 앞: %lldpt", "段前：%lld 磅", "段落前：%lld 點"],
+ "Style.Body": ["Body", "本文", "본문", "正文", "內文"],
+ "Style.Heading1": ["Heading 1", "見出し 1", "제목 1", "标题 1", "標題 1"],
+ "Style.Heading2": ["Heading 2", "見出し 2", "제목 2", "标题 2", "標題 2"],
+ "Style.Heading3": ["Heading 3", "見出し 3", "제목 3", "标题 3", "標題 3"],
+ "Style.Quote": ["Quote", "引用文", "인용", "引用", "引文"],
+ "Style.Subtitle": ["Subtitle", "副題", "부제", "副标题", "副標題"],
+ "Style.Title": ["Title", "表題", "제목", "标题", "標題"],
+ "Table.AddColumn": ["Add Column", "列を追加", "열 추가", "添加列", "新增欄"],
+ "Table.AddRow": ["Add Row", "行を追加", "행 추가", "添加行", "新增列"],
+ "Table.Cell.Placeholder": ["Column %lld", "%lld列目", "%lld열", "第 %lld 列", "第 %lld 欄"],
+ "Table.None": ["No Table Selected", "表が選択されていません", "선택된 표 없음", "未选择表格", "未選取表格"],
+ "Table.RemoveColumn": ["Remove Last Column", "最後の列を削除", "마지막 열 제거", "移除最后一列", "移除最後一欄"],
+ "Table.RemoveRow": ["Remove Last Row", "最後の行を削除", "마지막 행 제거", "移除最后一行", "移除最後一列"],
+ "Table.Row": ["Row %lld", "%lld行目", "%lld행", "第 %lld 行", "第 %lld 列"],
+ "Toolbar.ViewMode": ["View", "表示", "보기", "视图", "顯示方式"],
+ "Undo.Edit": ["Edit", "編集", "편집", "编辑", "編輯"],
+ "Undo.Formatting": ["Formatting", "書式設定", "서식", "格式", "格式"],
+ "Undo.Insertion": ["Insert", "挿入", "삽입", "插入", "插入"],
+ "Undo.List": ["List", "リスト", "목록", "列表", "清單"],
+ "Undo.PageSetup": ["Page Setup", "ページ設定", "페이지 설정", "页面设置", "版面設定"],
+ "Undo.ParagraphStyle": ["Style", "スタイル", "스타일", "样式", "樣式"],
+ "Undo.Table": ["Table", "表", "표", "表格", "表格"],
+ "Undo.Typing": ["Typing", "入力", "입력", "键入", "輸入"],
+ "Unsupported.Comments": ["Comments", "コメント", "메모", "批注", "註解"],
+ "Unsupported.ContentControls": ["Content controls, such as a table of contents", "目次などのコンテンツコントロール", "목차 등의 콘텐츠 컨트롤", "内容控件，例如目录", "內容控制項，例如目錄"],
+ "Unsupported.EmbeddedObjects": ["Embedded objects", "埋め込みオブジェクト", "포함된 개체", "嵌入的对象", "內嵌物件"],
+ "Unsupported.Equations": ["Equations", "数式", "수식", "公式", "方程式"],
+ "Unsupported.Footnotes": ["Footnotes and endnotes", "脚注と文末脚注", "각주 및 미주", "脚注和尾注", "註腳和章節附註"],
+ "Unsupported.Macros": ["Macros, which are kept but never run", "マクロ（保持されますが実行されません）", "매크로(유지되지만 실행되지 않음)", "宏（会保留，但绝不运行）", "巨集（會保留，但絕不執行）"],
+ "Unsupported.Sections": ["Several sections: every page uses the last one’s setup", "複数のセクション（すべてのページに最後のセクションの設定を使用）", "여러 구역: 모든 페이지에 마지막 구역의 설정 사용", "多个分节：所有页面使用最后一节的设置", "多個章節：所有頁面使用最後一節的設定"],
+ "Unsupported.Shapes": ["Shapes and text boxes", "図形とテキストボックス", "도형 및 텍스트 상자", "形状和文本框", "形狀和文字方塊"],
+ "Unsupported.TrackedChanges": ["Tracked changes", "変更履歴", "변경 내용 추적", "修订", "追蹤修訂"],
+ "ViewMode.Mobile": ["Mobile View", "モバイル表示", "모바일 보기", "移动视图", "行動版顯示"],
+ "ViewMode.Page": ["Full Document", "ドキュメント全体", "전체 문서", "完整文稿", "完整文件"],
+ "Toolbar.SourceCode": ["Source Code", "ソースコード", "소스 코드", "源代码", "原始碼"],
+}
+
+reuse = ["Alert.Error.Title", "Common.OK", "Format.ClearAll", "Format.Section.Text", "Format.Text.Size",
+         "Format.Text.Size.Decrease", "Format.Text.Size.Increase", "Toolbar.Bold", "Toolbar.Italic",
+         "Toolbar.Redo", "Toolbar.Share.Label", "Toolbar.Strikethrough", "Toolbar.Underline", "Toolbar.Undo",
+         "Toolbar.UnsupportedFeatures.Label", "ColorSwatches.More.Text.Accessibility", "ColorSwatches.MoreColours",
+         "ColorSwatches.None.Text.Accessibility", "ColorSwatches.Swatch.Text.Accessibility"]
+reuse += [k for k in ["Color.Black", "Color.Blue", "Color.Brown", "Color.Cyan", "Color.Green", "Color.Grey",
+          "Color.Grey2", "Color.Grey3", "Color.Grey4", "Color.Grey5", "Color.Grey6", "Color.Indigo", "Color.Mint",
+          "Color.Orange", "Color.Pink", "Color.Purple", "Color.Red", "Color.Teal", "Color.White", "Color.Yellow"]]
+
+tables = json.load(open(tables_path))["strings"]
+strings = {}
+for key, values in S.items():
+    strings[key] = {"extractionState": "manual", "localizations": {
+        lang: {"stringUnit": {"state": "translated", "value": value}} for lang, value in zip(LANGS, values)}}
+for key in reuse:
+    if key not in tables:
+        sys.exit(f"Tables has no {key}")
+    entry = dict(tables[key])
+    entry["extractionState"] = "manual"
+    strings[key] = entry
+    missing = [lang for lang in LANGS if lang not in entry.get("localizations", {})]
+    if missing:
+        sys.exit(f"{key} lacks {missing}")
+
+catalog = {"sourceLanguage": "en", "strings": dict(sorted(strings.items())), "version": "1.0"}
+with open(out_path, "w") as f:
+    json.dump(catalog, f, ensure_ascii=False, indent=2)
+print(len(strings), "strings")

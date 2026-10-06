@@ -1,0 +1,638 @@
+import Foundation
+
+/// Reads a `.docx` (or `.docm`) package into a `WordDocument`.
+enum DOCXReader {
+    static func document(from data: Data) throws -> WordDocument {
+        try document(fromParts: ZipArchive.entries(in: data))
+    }
+
+    static func document(fromParts parts: [String: Data]) throws -> WordDocument {
+        let packageRelationships = relationships(at: "_rels/.rels", in: parts)
+        let documentPath = packageRelationships.values
+            .first { $0.type == OOXML.officeDocumentType || $0.type.hasSuffix("/officeDocument") }
+            .map { DOCXPaths.resolve($0.target, relativeTo: "") } ?? "word/document.xml"
+        guard let documentData = parts[documentPath] else { throw DOCXError.missingMainDocument }
+
+        let relationships = relationships(at: DOCXPaths.relationshipsPath(for: documentPath), in: parts)
+        func part(ofType type: String) -> Data? {
+            relationships.values.first { $0.type == type && !$0.isExternal }
+                .flatMap { parts[DOCXPaths.resolve($0.target, relativeTo: documentPath)] }
+        }
+
+        var styles = part(ofType: OOXML.stylesType).flatMap { try? XMLLite.parse($0) }
+            .map(StyleReader.styleSheet(from:)) ?? StyleSheet()
+        if let theme = part(ofType: OOXML.themeType).flatMap({ try? XMLLite.parse($0) }) {
+            styles.majorFont = theme.firstDescendant(atPath: "themeElements/fontScheme/majorFont/latin")?
+                .attribute("typeface")
+            styles.minorFont = theme.firstDescendant(atPath: "themeElements/fontScheme/minorFont/latin")?
+                .attribute("typeface")
+        }
+        let numbering = part(ofType: OOXML.numberingType).flatMap { try? XMLLite.parse($0) }
+            .map(StyleReader.numbering(from:)) ?? NumberingDefinitions()
+
+        let root = try XMLLite.parse(documentData)
+        guard let body = root.firstChild(named: "body") else { throw DOCXError.missingBody }
+
+        let context = ReadContext(
+            namespaces: root.namespaceDeclarations, relationships: relationships, styles: styles
+        )
+        var children = body.children
+        let finalSection = children.last?.name == "sectPr" ? children.removeLast() : nil
+        var (blocks, trailing) = context.blocks(from: children)
+
+        var pageSetup = finalSection.map(PageSetupReader.pageSetup(from:)) ?? PageSetup()
+        pageSetup.preservedXML = finalSection.flatMap { context.serialize($0) }
+        pageSetup.original = pageSetup.values
+
+        if blocks.isEmpty { blocks = [.paragraph(Paragraph())] }
+
+        var report = context.report
+        if parts.keys.contains(where: { $0.lowercased().hasSuffix("vbaproject.bin") }) { report.insert(.macros) }
+        if parts.keys.contains(where: { $0.hasSuffix("comments.xml") }) { report.insert(.comments) }
+
+        func headerFooter(_ name: String) -> HeaderFooterText? {
+            guard let section = finalSection else { return nil }
+            let references = section.children(named: name + "Reference")
+            let reference = references.first { $0.attribute("type") == "default" } ?? references.first
+            guard let id = reference?.attribute("id"), let relationship = relationships[id],
+                  let data = parts[DOCXPaths.resolve(relationship.target, relativeTo: documentPath)],
+                  let xml = try? XMLLite.parse(data) else { return nil }
+            return HeaderFooterReader.text(from: xml)
+        }
+
+        var document = WordDocument(
+            body: blocks, pageSetup: pageSetup, styles: styles, numbering: numbering,
+            header: headerFooter("header"), footer: headerFooter("footer"),
+            package: DocumentPackage(
+                parts: parts, documentPath: documentPath, relationships: relationships,
+                rootAttributesXML: root.qualifiedAttributes.sorted { $0.key < $1.key }
+                    .map { " \($0.key)=\"\(XMLLite.escape($0.value))\"" }.joined(),
+                namespaces: root.namespaceDeclarations
+            ),
+            unsupportedFeatures: report
+        )
+        document.trailingXML = trailing
+        return document
+    }
+
+    static func relationships(at path: String, in parts: [String: Data]) -> [String: DocumentPackage.Relationship] {
+        guard let data = parts[path], let root = try? XMLLite.parse(data) else { return [:] }
+        var result: [String: DocumentPackage.Relationship] = [:]
+        for element in root.children(named: "Relationship") {
+            guard let id = element.attribute("Id"), let target = element.attribute("Target") else { continue }
+            result[id] = DocumentPackage.Relationship(
+                type: element.attribute("Type") ?? "", target: target,
+                isExternal: element.attribute("TargetMode") == "External"
+            )
+        }
+        return result
+    }
+}
+
+// MARK: - Body
+
+/// What reading the body needs to hand around, and what it learns on the way.
+private final class ReadContext {
+    let namespaces: [String: String]
+    let relationships: [String: DocumentPackage.Relationship]
+    let styles: StyleSheet
+    var report = UnsupportedFeatureReport()
+    private var footnoteCount = 0
+
+    init(namespaces: [String: String], relationships: [String: DocumentPackage.Relationship], styles: StyleSheet) {
+        self.namespaces = namespaces
+        self.relationships = relationships
+        self.styles = styles
+    }
+
+    func serialize(_ element: XMLElement) -> String? {
+        XMLLite.serialize(element, inheritedNamespaces: namespaces)
+    }
+
+    /// Reads body-level (or cell-level) content. Elements that are not blocks
+    /// in their own right, such as bookmarks between paragraphs, ride along
+    /// with the block after them; any left at the end are returned separately.
+    func blocks(from elements: [XMLElement]) -> (blocks: [Block], trailing: [String]) {
+        var blocks: [Block] = []
+        var pending: [String] = []
+        for element in elements {
+            switch element.name {
+            case "p":
+                var paragraph = paragraph(from: element)
+                paragraph.leadingXML = pending
+                pending = []
+                blocks.append(.paragraph(paragraph))
+            case "tbl":
+                var table = table(from: element)
+                table.leadingXML = pending
+                pending = []
+                blocks.append(.table(table))
+            case "sdt":
+                report.insert(.contentControls)
+                guard let xml = serialize(element) else { continue }
+                let text = element.firstChild(named: "sdtContent").map { content in
+                    content.children.map { HeaderFooterReader.plainText(of: $0) }
+                        .filter { !$0.isEmpty }.joined(separator: "\n")
+                } ?? ""
+                blocks.append(.preserved(PreservedBlock(
+                    xml: xml, displayText: text, kind: .contentControl, leadingXML: pending
+                )))
+                pending = []
+            case "sectPr":
+                continue
+            default:
+                if let xml = serialize(element) { pending.append(xml) }
+            }
+        }
+        return (blocks, pending)
+    }
+
+    // MARK: Paragraphs
+
+    func paragraph(from element: XMLElement) -> Paragraph {
+        var paragraph = Paragraph()
+        paragraph.attributesXML = element.qualifiedAttributes.sorted { $0.key < $1.key }
+            .map { " \($0.key)=\"\(XMLLite.escape($0.value))\"" }.joined()
+        if let pPr = element.firstChild(named: "pPr") {
+            paragraph.properties = PropertyReader.paragraphProperties(from: pPr)
+            paragraph.originalProperties = paragraph.properties
+            paragraph.preservedPropertiesXML = serialize(pPr)
+            if pPr.firstChild(named: "sectPr") != nil { report.insert(.sections) }
+        }
+
+        var inlines: [Inline] = []
+        for child in element.children {
+            inlines += self.inlines(from: child, hyperlink: nil)
+        }
+        paragraph.inlines = InlineNormalizer.normalized(inlines)
+        paragraph.originalInlines = paragraph.inlines
+        paragraph.originalXML = serialize(element)
+        return paragraph
+    }
+
+    private func inlines(from child: XMLElement, hyperlink: Hyperlink?) -> [Inline] {
+        switch child.name {
+        case "pPr":
+            return []
+        case "r":
+            return run(from: child, hyperlink: hyperlink)
+        case "hyperlink" where hyperlink == nil:
+            let link = self.hyperlink(from: child)
+            return child.children.flatMap { inlines(from: $0, hyperlink: link) }
+        case "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd",
+             "commentRangeStart", "commentRangeEnd":
+            if child.name.hasPrefix("comment") { report.insert(.comments) }
+            return marker(child, hyperlink: hyperlink)
+        case "ins", "moveTo", "del", "moveFrom":
+            report.insert(.trackedChanges)
+            let isRemoval = child.name == "del" || child.name == "moveFrom"
+            return token(child, display: isRemoval ? nil : HeaderFooterReader.plainText(of: child), hyperlink: hyperlink)
+        case "oMath", "oMathPara":
+            report.insert(.equations)
+            return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink)
+        case "sdt":
+            report.insert(.contentControls)
+            return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink)
+        default:
+            // fldSimple, smartTag, customXml and the like: kept whole, shown as their text.
+            return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink)
+        }
+    }
+
+    private func marker(_ element: XMLElement, hyperlink: Hyperlink?) -> [Inline] {
+        guard let xml = serialize(element) else { return [] }
+        return [Inline(.paragraphChild(xml: xml, display: nil), hyperlink: hyperlink)]
+    }
+
+    private func token(_ element: XMLElement, display: String?, hyperlink: Hyperlink?) -> [Inline] {
+        guard let xml = serialize(element) else { return [] }
+        let firstRun = firstDescendant(named: "r", in: element)
+        let format = firstRun.flatMap { $0.firstChild(named: "rPr") }.map(runFormat) ?? RunFormat()
+        let shown = display.flatMap { $0.isEmpty ? nil : $0 }
+        return [Inline(.paragraphChild(xml: xml, display: shown), format: format, hyperlink: hyperlink)]
+    }
+
+    private func hyperlink(from element: XMLElement) -> Hyperlink {
+        let id = element.attribute("id")
+        let url = id.flatMap { relationships[$0] }.flatMap { $0.isExternal ? URL(string: $0.target) : nil }
+        return Hyperlink(
+            relationshipID: id, anchor: element.attribute("anchor"), url: url,
+            attributesXML: element.qualifiedAttributes.sorted { $0.key < $1.key }
+                .map { " \($0.key)=\"\(XMLLite.escape($0.value))\"" }.joined()
+        )
+    }
+
+    private func runFormat(_ rPr: XMLElement) -> RunFormat {
+        let style = PropertyReader.runStyle(from: rPr)
+        return RunFormat(style: style, original: style, preservedPropertiesXML: serialize(rPr))
+    }
+
+    private func run(from element: XMLElement, hyperlink: Hyperlink?) -> [Inline] {
+        let format = element.firstChild(named: "rPr").map(runFormat) ?? RunFormat()
+        var result: [Inline] = []
+        func add(_ content: InlineContent) {
+            result.append(Inline(content, format: format, hyperlink: hyperlink))
+        }
+        func keep(_ child: XMLElement, display: String?) {
+            guard let xml = serialize(child) else { return }
+            add(.runChild(xml: xml, display: display))
+        }
+
+        for child in element.children {
+            switch child.name {
+            case "rPr", "lastRenderedPageBreak":
+                continue
+            case "t":
+                if !child.text.isEmpty { add(.text(child.text)) }
+            case "tab":
+                add(.tab)
+            case "br":
+                add(child.attribute("type") == "page" ? .pageBreak : .lineBreak)
+            case "cr":
+                add(.lineBreak)
+            case "noBreakHyphen":
+                add(.text("\u{2011}"))
+            case "softHyphen":
+                add(.text("\u{00AD}"))
+            case "sym":
+                let code = child.attribute("char").flatMap { UInt32($0, radix: 16) } ?? 0x25A1
+                let scalar = UnicodeScalar(code >= 0xF000 ? code - 0xF000 : code) ?? "\u{25A1}"
+                keep(child, display: String(Character(scalar)))
+            case "drawing":
+                if let image = image(from: child) {
+                    add(.image(image))
+                } else {
+                    report.insert(.shapes)
+                    keep(child, display: "\u{25A2}")
+                }
+            case "AlternateContent":
+                // Usually a shape with a picture of itself as the fallback.
+                report.insert(.shapes)
+                keep(child, display: "\u{25A2}")
+            case "pict", "object":
+                report.insert(child.name == "object" ? .embeddedObjects : .shapes)
+                keep(child, display: "\u{25A2}")
+            case "footnoteReference", "endnoteReference":
+                report.insert(.footnotes)
+                footnoteCount += 1
+                keep(child, display: String(footnoteCount))
+            case "commentReference":
+                report.insert(.comments)
+                keep(child, display: nil)
+            default:
+                // Field characters, field codes and other things that take no room.
+                keep(child, display: nil)
+            }
+        }
+        return result
+    }
+
+    private func image(from drawing: XMLElement) -> InlineImage? {
+        guard let container = drawing.children.first(where: { $0.name == "inline" || $0.name == "anchor" }),
+              firstDescendant(named: "txbx", in: container) == nil,
+              let blip = firstDescendant(named: "blip", in: container),
+              let id = blip.attribute("embed") else { return nil }
+        let extent = container.firstChild(named: "extent")
+        let width = Double(extent?.attribute("cx") ?? "") ?? 0
+        let height = Double(extent?.attribute("cy") ?? "") ?? 0
+        guard width > 0, height > 0 else { return nil }
+        return InlineImage(
+            relationshipID: id, width: width / 12_700, height: height / 12_700,
+            xml: serialize(drawing), isFloating: container.name == "anchor"
+        )
+    }
+
+    private func firstDescendant(named name: String, in element: XMLElement) -> XMLElement? {
+        for child in element.children {
+            if child.name == name { return child }
+            if let found = firstDescendant(named: name, in: child) { return found }
+        }
+        return nil
+    }
+
+    // MARK: Tables
+
+    func table(from element: XMLElement) -> Table {
+        let tblPr = element.firstChild(named: "tblPr")
+        let styleID = tblPr?.firstChild(named: "tblStyle")?.attribute("val")
+        let grid = element.firstChild(named: "tblGrid")?.children(named: "gridCol")
+            .map { Int($0.attribute("w") ?? "") ?? 0 } ?? []
+        let explicitBorders = tblPr?.firstChild(named: "tblBorders").map(PropertyReader.hasVisibleBorders)
+
+        let rows = element.children(named: "tr").map { row in
+            TableRow(
+                cells: row.children(named: "tc").map(cell),
+                preservedPropertiesXML: row.firstChild(named: "trPr").flatMap { serialize($0) },
+                isHeader: row.firstChild(named: "trPr")?.firstChild(named: "tblHeader") != nil
+            )
+        }
+        var table = Table(
+            rows: rows, gridColumns: grid, preservedPropertiesXML: tblPr.flatMap { serialize($0) },
+            styleID: styleID,
+            hasBorders: explicitBorders ?? styles.tableHasBorders(styleID: styleID)
+        )
+        table.originalXML = serialize(element)
+        table.originalRows = rows
+        table.originalGrid = grid
+        return table
+    }
+
+    private func cell(from element: XMLElement) -> TableCell {
+        let tcPr = element.firstChild(named: "tcPr")
+        var content = blocks(from: element.children.filter { $0.name != "tcPr" }).blocks
+        // A cell must end in a paragraph.
+        if case .paragraph = content.last {} else { content.append(.paragraph(Paragraph())) }
+        var cell = TableCell(blocks: content)
+        cell.preservedPropertiesXML = tcPr.flatMap { serialize($0) }
+        cell.gridSpan = Int(tcPr?.firstChild(named: "gridSpan")?.attribute("val") ?? "") ?? 1
+        if let merge = tcPr?.firstChild(named: "vMerge") {
+            cell.verticalMerge = merge.attribute("val") == "restart" ? .restart : .continue
+        }
+        if let fill = tcPr?.firstChild(named: "shd")?.attribute("fill"), fill != "auto" {
+            cell.shadingHex = fill
+        }
+        return cell
+    }
+}
+
+// MARK: - Properties
+
+enum PropertyReader {
+    /// An OOXML on/off property: present means on, unless its value says otherwise.
+    static func isOn(_ element: XMLElement?) -> Bool? {
+        guard let element else { return nil }
+        guard let value = element.attribute("val") else { return true }
+        return !["0", "false", "off", "none"].contains(value)
+    }
+
+    static func paragraphProperties(from pPr: XMLElement) -> ParagraphProperties {
+        var result = ParagraphProperties()
+        result.styleID = pPr.firstChild(named: "pStyle")?.attribute("val")
+        result.alignment = pPr.firstChild(named: "jc")?.attribute("val").flatMap(ParagraphAlignment.init(ooxml:))
+        if let numPr = pPr.firstChild(named: "numPr"),
+           let id = numPr.firstChild(named: "numId")?.attribute("val").flatMap({ Int($0) }) {
+            let level = numPr.firstChild(named: "ilvl")?.attribute("val").flatMap { Int($0) } ?? 0
+            result.list = ListReference(numberingID: id, level: level)
+        }
+        if let spacing = pPr.firstChild(named: "spacing") {
+            result.spacingBefore = spacing.attribute("before").flatMap { Int($0) }
+            result.spacingAfter = spacing.attribute("after").flatMap { Int($0) }
+            if let line = spacing.attribute("line").flatMap({ Int($0) }) {
+                let rule = spacing.attribute("lineRule").flatMap(LineSpacing.Rule.init(rawValue:)) ?? .auto
+                result.lineSpacing = LineSpacing(line: line, rule: rule)
+            }
+        }
+        if let ind = pPr.firstChild(named: "ind") {
+            result.indentLeft = (ind.attribute("left") ?? ind.attribute("start")).flatMap { Int($0) }
+            result.indentRight = (ind.attribute("right") ?? ind.attribute("end")).flatMap { Int($0) }
+            if let hanging = ind.attribute("hanging").flatMap({ Int($0) }) {
+                result.indentFirstLine = -hanging
+            } else if let first = ind.attribute("firstLine").flatMap({ Int($0) }) {
+                result.indentFirstLine = first
+            }
+        }
+        result.pageBreakBefore = isOn(pPr.firstChild(named: "pageBreakBefore"))
+        result.outlineLevel = pPr.firstChild(named: "outlineLvl")?.attribute("val").flatMap { Int($0) }
+        return result
+    }
+
+    static func runStyle(from rPr: XMLElement) -> RunStyle {
+        var result = RunStyle()
+        result.characterStyleID = rPr.firstChild(named: "rStyle")?.attribute("val")
+        if let fonts = rPr.firstChild(named: "rFonts") {
+            if let name = fonts.attribute("ascii") ?? fonts.attribute("hAnsi") ?? fonts.attribute("eastAsia") {
+                result.fontName = name
+            } else if let theme = fonts.attribute("asciiTheme") ?? fonts.attribute("hAnsiTheme") {
+                result.fontName = theme.hasPrefix("major") ? RunStyle.majorThemeFont : RunStyle.minorThemeFont
+            }
+        }
+        result.fontSize = rPr.firstChild(named: "sz")?.attribute("val").flatMap { Int(Double($0) ?? 0) }
+            .flatMap { $0 > 0 ? $0 : nil }
+        result.isBold = isOn(rPr.firstChild(named: "b"))
+        result.isItalic = isOn(rPr.firstChild(named: "i"))
+        result.underline = isOn(rPr.firstChild(named: "u"))
+        result.isStruckThrough = isOn(rPr.firstChild(named: "strike"))
+        if let color = rPr.firstChild(named: "color")?.attribute("val"), color != "auto" {
+            result.colorHex = color.uppercased()
+        }
+        if let highlight = rPr.firstChild(named: "highlight")?.attribute("val"), highlight != "none" {
+            result.highlight = highlight
+        }
+        result.verticalAlignment = rPr.firstChild(named: "vertAlign")?.attribute("val")
+            .flatMap(RunStyle.VerticalPosition.init(rawValue:))
+        result.allCaps = isOn(rPr.firstChild(named: "caps"))
+        return result
+    }
+
+    static func hasVisibleBorders(_ borders: XMLElement) -> Bool {
+        borders.children.contains { border in
+            let value = border.attribute("val") ?? "nil"
+            return value != "nil" && value != "none"
+        }
+    }
+}
+
+extension RunStyle {
+    /// Stand-ins for the theme's fonts, resolved when the run is drawn.
+    static let majorThemeFont = "+major"
+    static let minorThemeFont = "+minor"
+}
+
+enum StyleReader {
+    static func styleSheet(from root: XMLElement) -> StyleSheet {
+        var sheet = StyleSheet()
+        if let defaults = root.firstChild(named: "docDefaults") {
+            if let rPr = defaults.firstDescendant(atPath: "rPrDefault/rPr") {
+                sheet.defaultRunStyle = PropertyReader.runStyle(from: rPr)
+            }
+            if let pPr = defaults.firstDescendant(atPath: "pPrDefault/pPr") {
+                sheet.defaultParagraphProperties = PropertyReader.paragraphProperties(from: pPr)
+            }
+        }
+        for element in root.children(named: "style") {
+            guard let style = style(from: element) else { continue }
+            sheet.styles[style.id] = style
+            if element.attribute("default") == "1" || element.attribute("default") == "true" {
+                switch style.kind {
+                case .paragraph: sheet.defaultParagraphStyleID = style.id
+                case .character: sheet.defaultCharacterStyleID = style.id
+                default: break
+                }
+            }
+        }
+        return sheet
+    }
+
+    static func style(from element: XMLElement) -> StyleSheet.Style? {
+        guard let id = element.attribute("styleId"),
+              let kind = StyleSheet.Style.Kind(rawValue: element.attribute("type") ?? "paragraph") else { return nil }
+        var style = StyleSheet.Style(
+            id: id, name: element.firstChild(named: "name")?.attribute("val") ?? id, kind: kind,
+            basedOn: element.firstChild(named: "basedOn")?.attribute("val"),
+            next: element.firstChild(named: "next")?.attribute("val")
+        )
+        if let pPr = element.firstChild(named: "pPr") {
+            style.paragraphProperties = PropertyReader.paragraphProperties(from: pPr)
+            style.paragraphProperties.styleID = nil
+        }
+        if let rPr = element.firstChild(named: "rPr") {
+            style.runStyle = PropertyReader.runStyle(from: rPr)
+            style.runStyle.characterStyleID = nil
+        }
+        if let borders = element.firstDescendant(atPath: "tblPr/tblBorders") {
+            style.hasTableBorders = PropertyReader.hasVisibleBorders(borders)
+        }
+        return style
+    }
+
+    static func numbering(from root: XMLElement) -> NumberingDefinitions {
+        var result = NumberingDefinitions()
+        for abstract in root.children(named: "abstractNum") {
+            guard let id = abstract.attribute("abstractNumId").flatMap({ Int($0) }) else { continue }
+            var levels: [Int: NumberingDefinitions.ListLevel] = [:]
+            for level in abstract.children(named: "lvl") {
+                guard let index = level.attribute("ilvl").flatMap({ Int($0) }) else { continue }
+                let ind = level.firstDescendant(atPath: "pPr/ind")
+                levels[index] = NumberingDefinitions.ListLevel(
+                    format: level.firstChild(named: "numFmt")?.attribute("val") ?? "decimal",
+                    text: level.firstChild(named: "lvlText")?.attribute("val") ?? "",
+                    start: level.firstChild(named: "start")?.attribute("val").flatMap { Int($0) } ?? 1,
+                    indentLeft: (ind?.attribute("left") ?? ind?.attribute("start")).flatMap { Int($0) },
+                    hanging: ind?.attribute("hanging").flatMap { Int($0) }
+                )
+            }
+            result.abstracts[id] = levels
+        }
+        for instance in root.children(named: "num") {
+            guard let id = instance.attribute("numId").flatMap({ Int($0) }),
+                  let abstract = instance.firstChild(named: "abstractNumId")?.attribute("val").flatMap({ Int($0) })
+            else { continue }
+            result.instances[id] = abstract
+        }
+        return result
+    }
+}
+
+enum PageSetupReader {
+    static func pageSetup(from sectPr: XMLElement) -> PageSetup {
+        var setup = PageSetup()
+        func value(_ element: XMLElement?, _ name: String) -> Int? {
+            element?.attribute(name).flatMap { Int(Double($0) ?? .nan) }
+        }
+        let size = sectPr.firstChild(named: "pgSz")
+        setup.width = value(size, "w") ?? setup.width
+        setup.height = value(size, "h") ?? setup.height
+        let margins = sectPr.firstChild(named: "pgMar")
+        // Negative top and bottom margins mean "regardless of the header"; the size is what counts.
+        setup.marginTop = abs(value(margins, "top") ?? setup.marginTop)
+        setup.marginBottom = abs(value(margins, "bottom") ?? setup.marginBottom)
+        setup.marginLeft = value(margins, "left") ?? value(margins, "start") ?? setup.marginLeft
+        setup.marginRight = value(margins, "right") ?? value(margins, "end") ?? setup.marginRight
+        setup.headerDistance = value(margins, "header") ?? setup.headerDistance
+        setup.footerDistance = value(margins, "footer") ?? setup.footerDistance
+        return setup
+    }
+}
+
+enum HeaderFooterReader {
+    /// A header or footer part's text, with page number fields as placeholders.
+    static func text(from root: XMLElement) -> HeaderFooterText? {
+        let paragraphs = root.children.filter { $0.name == "p" || $0.name == "sdt" || $0.name == "tbl" }
+        let lines = paragraphs.map { fieldAwareText(of: $0) }.filter { !$0.trimmed.isEmpty }
+        guard !lines.isEmpty else { return nil }
+        let alignment = paragraphs.lazy.compactMap {
+            $0.firstDescendant(atPath: "pPr/jc")?.attribute("val").flatMap(ParagraphAlignment.init(ooxml:))
+        }.first ?? .leading
+        return HeaderFooterText(text: lines.joined(separator: "\n"), alignment: alignment)
+    }
+
+    /// Text with `PAGE` and `NUMPAGES` fields replaced by placeholders, since
+    /// the result Word last stored is only right for one page.
+    private static func fieldAwareText(of element: XMLElement) -> String {
+        var output = ""
+        var instruction = ""
+        // Inside a field: collecting its code, then skipping its stale result.
+        var state: (inCode: Bool, skippingResult: Bool) = (false, false)
+        func visit(_ node: XMLElement) {
+            switch node.name {
+            case "fldChar":
+                switch node.attribute("fldCharType") {
+                case "begin":
+                    state = (true, false)
+                    instruction = ""
+                case "separate":
+                    state.inCode = false
+                    if let placeholder = placeholder(for: instruction) {
+                        output += placeholder
+                        state.skippingResult = true
+                    }
+                case "end":
+                    if state.inCode, let placeholder = placeholder(for: instruction) { output += placeholder }
+                    state = (false, false)
+                default: break
+                }
+            case "instrText":
+                instruction += node.text
+            case "fldSimple":
+                if let placeholder = placeholder(for: node.attribute("instr") ?? "") {
+                    output += placeholder
+                } else {
+                    node.children.forEach(visit)
+                }
+            case "t":
+                if !state.inCode && !state.skippingResult { output += node.text }
+            case "tab":
+                if !state.inCode && !state.skippingResult { output += "\t" }
+            default:
+                node.children.forEach(visit)
+            }
+        }
+        visit(element)
+        return output
+    }
+
+    private static func placeholder(for instruction: String) -> String? {
+        let word = instruction.trimmed.split(separator: " ").first.map { $0.uppercased() }
+        switch word {
+        case "PAGE": return HeaderFooterText.pageNumberPlaceholder
+        case "NUMPAGES", "SECTIONPAGES": return HeaderFooterText.pageCountPlaceholder
+        default: return nil
+        }
+    }
+
+    /// Every `w:t` (and equation text) inside an element, in order.
+    static func plainText(of element: XMLElement) -> String {
+        var output = ""
+        func visit(_ node: XMLElement) {
+            switch node.name {
+            case "t", "delText": if node.name == "t" { output += node.text }
+            case "tab": output += "\t"
+            case "br", "cr": output += "\n"
+            case "instrText", "rPr", "pPr": return
+            case "p" where !output.isEmpty: output += "\n"; node.children.forEach(visit)
+            default: node.children.forEach(visit)
+            }
+        }
+        visit(element)
+        return output
+    }
+}
+
+/// Puts adjacent text with the same formatting into one piece, so the same
+/// content always reads back the same however the file happened to split it.
+enum InlineNormalizer {
+    static func normalized(_ inlines: [Inline]) -> [Inline] {
+        var result: [Inline] = []
+        result.reserveCapacity(inlines.count)
+        for inline in inlines {
+            if case .text(let text) = inline.content, let last = result.last,
+               case .text(let previous) = last.content,
+               last.format == inline.format, last.hyperlink == inline.hyperlink {
+                result[result.count - 1].content = .text(previous + text)
+            } else {
+                result.append(inline)
+            }
+        }
+        return result
+    }
+}
