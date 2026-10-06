@@ -18,15 +18,17 @@ struct DocumentView: View {
     private var wordDocument: Binding<WordDocument> { $document.document }
 
     var body: some View {
-        content
-            .overlay(alignment: .bottom) {
-                if state.viewMode == .page {
-                    FloatingActionBar(state: state, namespace: panelTransition)
-                        .padding(.bottom, 8)
-                } else {
-                    editButton
-                }
+        // A stack rather than an overlay: the pages run under the home
+        // indicator, but the bar must stay clear of it, where taps go to the system.
+        ZStack(alignment: .bottom) {
+            content
+            if state.viewMode == .page {
+                FloatingActionBar(state: state, namespace: panelTransition)
+                    .padding(.bottom, 8)
+            } else {
+                editButton
             }
+        }
             .background(Color(uiColor: .secondarySystemBackground))
             .onAppear {
                 if let storedMode, let mode = ViewMode(rawValue: storedMode) {
