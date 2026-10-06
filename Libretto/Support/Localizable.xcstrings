@@ -4242,31 +4242,31 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Share spreadsheet"
+            "value": "Share Document"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "スプレッドシートを共有"
+            "value": "書類を共有"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "스프레드시트 공유"
+            "value": "문서 공유"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "共享电子表格"
+            "value": "共享文稿"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "分享試算表"
+            "value": "分享文件"
           }
         }
       }

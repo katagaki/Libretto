@@ -95,6 +95,7 @@ S = {
  "Table.RemoveColumn": ["Remove Last Column", "最後の列を削除", "마지막 열 제거", "移除最后一列", "移除最後一欄"],
  "Table.RemoveRow": ["Remove Last Row", "最後の行を削除", "마지막 행 제거", "移除最后一行", "移除最後一列"],
  "Table.Row": ["Row %lld", "%lld行目", "%lld행", "第 %lld 行", "第 %lld 列"],
+ "Toolbar.Share.Label": ["Share Document", "書類を共有", "문서 공유", "共享文稿", "分享文件"],
  "Toolbar.ViewMode": ["View", "表示", "보기", "视图", "顯示方式"],
  "Undo.Edit": ["Edit", "編集", "편집", "编辑", "編輯"],
  "Undo.Formatting": ["Formatting", "書式設定", "서식", "格式", "格式"],
@@ -120,7 +121,7 @@ S = {
 
 reuse = ["Alert.Error.Title", "Common.OK", "Format.ClearAll", "Format.Section.Text", "Format.Text.Size",
          "Format.Text.Size.Decrease", "Format.Text.Size.Increase", "Toolbar.Bold", "Toolbar.Italic",
-         "Toolbar.Redo", "Toolbar.Share.Label", "Toolbar.Strikethrough", "Toolbar.Underline", "Toolbar.Undo",
+         "Toolbar.Redo", "Toolbar.Strikethrough", "Toolbar.Underline", "Toolbar.Undo",
          "Toolbar.UnsupportedFeatures.Label", "ColorSwatches.More.Text.Accessibility", "ColorSwatches.MoreColours",
          "ColorSwatches.None.Text.Accessibility", "ColorSwatches.Swatch.Text.Accessibility"]
 reuse += [k for k in ["Color.Black", "Color.Blue", "Color.Brown", "Color.Cyan", "Color.Green", "Color.Grey",
