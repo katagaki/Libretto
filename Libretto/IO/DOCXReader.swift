@@ -48,7 +48,9 @@ enum DOCXReader {
         pageSetup.preservedXML = finalSection.flatMap { context.serialize($0) }
         pageSetup.original = pageSetup.values
 
-        if blocks.isEmpty { blocks = [.paragraph(Paragraph())] }
+        // The body ends with a paragraph, which Word adds after a closing
+        // table or content control, and the editor needs as well.
+        if case .paragraph = blocks.last {} else { blocks.append(.paragraph(Paragraph())) }
 
         var report = context.report
         if parts.keys.contains(where: { $0.lowercased().hasSuffix("vbaproject.bin") }) { report.insert(.macros) }
