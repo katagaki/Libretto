@@ -1,9 +1,13 @@
 import SwiftUI
 
-/// The flat blue of the app icon, washed across the document browser's top area.
+/// A quiet wash of the app icon's blue across the document browser's top
+/// area: a pale, paper-like tint in light mode and a deep ink in dark mode.
 struct LaunchBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         Color.accentColor
+            .mix(with: colorScheme == .dark ? .black : .white, by: colorScheme == .dark ? 0.78 : 0.9)
             .ignoresSafeArea()
     }
 }
@@ -13,6 +17,7 @@ struct LaunchBackground: View {
 /// area were a page of type.
 struct LaunchText: View {
     var geometry: DocumentLaunchGeometryProxy
+    @Environment(\.colorScheme) private var colorScheme
 
     private let lineHeight: CGFloat = 8
     private let leading: CGFloat = 22
@@ -21,6 +26,8 @@ struct LaunchText: View {
     var body: some View {
         // The title's frame runs on under the browser; the type stops short of it.
         let height = geometry.titleViewFrame.minY + geometry.titleViewFrame.height * 0.6
+
+        let ink = colorScheme == .dark ? Color.white.opacity(0.07) : Color.accentColor.opacity(0.1)
 
         Canvas { context, size in
             let measure = min(size.width - margin * 2, 640)
@@ -35,7 +42,7 @@ struct LaunchText: View {
                         ? Self.lastLineWidths[line % Self.lastLineWidths.count]
                         : Self.lineWidths[(line + index) % Self.lineWidths.count]
                     let bar = CGRect(x: left, y: y, width: measure * fraction, height: lineHeight)
-                    context.fill(Path(roundedRect: bar, cornerRadius: lineHeight / 2), with: .color(.white.opacity(0.14)))
+                    context.fill(Path(roundedRect: bar, cornerRadius: lineHeight / 2), with: .color(ink))
                     y += leading
                 }
                 y += leading * 0.6
