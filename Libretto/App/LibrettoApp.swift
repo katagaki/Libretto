@@ -12,7 +12,7 @@ struct LibrettoApp: App {
         } background: {
             LaunchBackground()
         } backgroundAccessoryView: { geometry in
-            LaunchPages(geometry: geometry)
+            LaunchText(geometry: geometry)
         }
     }
 }

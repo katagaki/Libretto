@@ -1,138 +1,57 @@
 import SwiftUI
 
-/// The blue the document browser's top area is washed in: the app icon's
-/// colour running down into a deeper indigo.
+/// The flat blue of the app icon, washed across the document browser's top area.
 struct LaunchBackground: View {
     var body: some View {
-        LinearGradient(
-            colors: [Color.accentColor.mix(with: .white, by: 0.12), Color.accentColor.mix(with: .indigo, by: 0.55)],
-            startPoint: .top, endPoint: .bottom
-        )
-        .overlay {
-            // A soft light falling from above, so the pages look lit.
-            RadialGradient(colors: [.white.opacity(0.22), .clear], center: .top, startRadius: 0, endRadius: 420)
-        }
-        .ignoresSafeArea()
+        Color.accentColor
+            .ignoresSafeArea()
     }
 }
 
-/// A fan of three pages set in the corner beside the app's name, drawn like
-/// the page in the app icon: a sheet with its corner folded over and lines of
-/// text set on it.
-struct LaunchPages: View {
+/// Lines of text set faintly behind the app's name, drawn like the lines in
+/// the app icon: rounded bars in ragged-right paragraphs, as though the top
+/// area were a page of type.
+struct LaunchText: View {
     var geometry: DocumentLaunchGeometryProxy
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isFanned = false
+
+    private let lineHeight: CGFloat = 8
+    private let leading: CGFloat = 22
+    private let margin: CGFloat = 24
 
     var body: some View {
-        let frame = geometry.frame
-        let title = geometry.titleViewFrame
-        // The title's frame runs from above the name down past the button;
-        // the pages keep to its upper part, clear of the button.
-        let top = frame.minY + 16
-        let bottom = title.minY + title.height * 0.26
-        let height = min(max(bottom - top, 0), 150)
-        let width = height * 0.76
+        // The title's frame runs on under the browser; the type stops short of it.
+        let height = geometry.titleViewFrame.minY + geometry.titleViewFrame.height * 0.6
 
-        ZStack {
-            LaunchPage(lineCount: 5)
-                .frame(width: width * 0.9, height: height * 0.9)
-                .rotationEffect(.degrees(isFanned ? -16 : 0), anchor: .bottom)
-                .offset(x: isFanned ? -width * 0.32 : 0, y: height * 0.05)
-            LaunchPage(lineCount: 4)
-                .frame(width: width * 0.9, height: height * 0.9)
-                .rotationEffect(.degrees(isFanned ? 14 : 0), anchor: .bottom)
-                .offset(x: isFanned ? width * 0.32 : 0, y: height * 0.05)
-            LaunchPage(lineCount: 6, hasHeading: true)
-                .frame(width: width, height: height)
-        }
-        .rotationEffect(.degrees(4))
-        .position(x: frame.maxX - width * 0.95 - 12, y: bottom - height / 2)
-        .opacity(height > 72 ? 1 : 0)
-        .accessibilityHidden(true)
-        .onAppear {
-            withAnimation(reduceMotion ? nil : .spring(duration: 0.7, bounce: 0.3).delay(0.15)) {
-                isFanned = true
-            }
-        }
-    }
-}
-
-/// One sheet of paper with its top corner folded over.
-struct LaunchPage: View {
-    var lineCount: Int
-    var hasHeading = false
-
-    var body: some View {
-        GeometryReader { proxy in
-            let size = proxy.size
-            let fold = size.width * 0.26
-            let inset = size.width * 0.14
-            let lineHeight = size.height * 0.035
-
-            ZStack(alignment: .topLeading) {
-                FoldedSheet(fold: fold)
-                    .fill(.white)
-                    .shadow(color: .black.opacity(0.22), radius: 14, y: 8)
-                FoldedCorner(fold: fold)
-                    .fill(Color.accentColor.mix(with: .white, by: 0.7))
-
-                VStack(alignment: .leading, spacing: lineHeight * 1.5) {
-                    if hasHeading {
-                        Capsule()
-                            .fill(Color.accentColor)
-                            .frame(width: (size.width - inset * 2) * 0.55, height: lineHeight * 1.5)
-                            .padding(.bottom, lineHeight * 0.5)
-                    }
-                    ForEach(0..<lineCount, id: \.self) { index in
-                        Capsule()
-                            .fill(Color.accentColor.opacity(0.18))
-                            .frame(width: (size.width - inset * 2) * (index == lineCount - 1 ? 0.6 : 1),
-                                   height: lineHeight)
-                    }
+        Canvas { context, size in
+            let measure = min(size.width - margin * 2, 640)
+            let left = (size.width - measure) / 2
+            var y = margin
+            var line = 0
+            while y < size.height {
+                // A paragraph runs a few lines and ends on a short one.
+                let length = Self.paragraphLengths[line % Self.paragraphLengths.count]
+                for index in 0..<length where y < size.height {
+                    let fraction = index == length - 1
+                        ? Self.lastLineWidths[line % Self.lastLineWidths.count]
+                        : Self.lineWidths[(line + index) % Self.lineWidths.count]
+                    let bar = CGRect(x: left, y: y, width: measure * fraction, height: lineHeight)
+                    context.fill(Path(roundedRect: bar, cornerRadius: lineHeight / 2), with: .color(.white.opacity(0.14)))
+                    y += leading
                 }
-                .padding(.horizontal, inset)
-                .padding(.top, fold + lineHeight * 1.5)
+                y += leading * 0.6
+                line += length
             }
         }
-        // Paper stays white whatever the appearance.
-        .environment(\.colorScheme, .light)
+        // Fade the type out before it reaches the browser.
+        .mask {
+            LinearGradient(colors: [.black, .black, .clear], startPoint: .top, endPoint: .bottom)
+        }
+        .frame(width: geometry.frame.width, height: max(height, 0))
+        .position(x: geometry.frame.midX, y: max(height, 0) / 2)
+        .accessibilityHidden(true)
     }
-}
 
-/// The outline of a sheet with its top-right corner cut away for the fold.
-private struct FoldedSheet: Shape {
-    var fold: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        let radius = rect.width * 0.06
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX + radius, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - fold, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + fold))
-        path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.maxY),
-                    tangent2End: CGPoint(x: rect.minX, y: rect.maxY), radius: radius)
-        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY),
-                    tangent2End: CGPoint(x: rect.minX, y: rect.minY), radius: radius)
-        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY),
-                    tangent2End: CGPoint(x: rect.maxX, y: rect.minY), radius: radius)
-        path.closeSubpath()
-        return path
-    }
-}
-
-/// The folded-over flap in the sheet's top-right corner.
-private struct FoldedCorner: Shape {
-    var fold: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        let radius = fold * 0.25
-        var path = Path()
-        path.move(to: CGPoint(x: rect.maxX - fold, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + fold))
-        path.addArc(tangent1End: CGPoint(x: rect.maxX - fold, y: rect.minY + fold),
-                    tangent2End: CGPoint(x: rect.maxX - fold, y: rect.minY), radius: radius)
-        path.closeSubpath()
-        return path
-    }
+    private static let paragraphLengths = [4, 3, 5, 2, 4]
+    private static let lineWidths: [CGFloat] = [1, 0.97, 1, 0.94, 0.99, 0.96]
+    private static let lastLineWidths: [CGFloat] = [0.58, 0.36, 0.72, 0.45, 0.64]
 }
