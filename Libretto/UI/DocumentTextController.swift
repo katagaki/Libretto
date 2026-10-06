@@ -31,7 +31,10 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     private var pageCount = 1
     private var syncTask: Task<Void, Never>?
     /// Formatting chosen with nothing selected, for the text typed next.
-    private var typingFormat: (format: RunFormat, location: Int)?
+    /// The text's length when it was chosen tells typing apart from moving
+    /// the caret: UIKit resets the typing attributes on its own schedule, so
+    /// the formatting is applied to whatever arrives at that spot instead.
+    private var typingFormat: (format: RunFormat, location: Int, length: Int)?
 
     weak var state: EditorState?
     /// Hands a changed document to whoever owns it.
@@ -238,6 +241,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     }
 
     private func textDidChange(touchingParagraphs: Bool) {
+        applyTypingFormat()
         if touchingParagraphs {
             let changed = DocumentRenderer.relabel(storage, finalParagraph: finalParagraph, context: context)
             for range in changed {
@@ -249,13 +253,32 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         selectionDidChange()
     }
 
+    /// Gives text typed where formatting was chosen that formatting.
+    private func applyTypingFormat() {
+        guard let typing = typingFormat else { return }
+        typingFormat = nil
+        let inserted = storage.length - typing.length
+        let selection = textView.selectedRange
+        guard inserted > 0, selection.location == typing.location + inserted else { return }
+        let range = NSRange(location: typing.location, length: inserted)
+        storage.beginEditing()
+        storage.enumerateAttribute(.librettoRun, in: range) { value, run, _ in
+            let hyperlink = (value as? RunBox)?.hyperlink
+            storage.addAttribute(.librettoRun, value: RunBox(typing.format, hyperlink: hyperlink), range: run)
+        }
+        DocumentRenderer.restyle(storage, paragraphsIn: range, finalParagraph: finalParagraph, context: context)
+        storage.endEditing()
+        textView.selectedRange = selection
+    }
+
     func textViewDidChangeSelection(_ textView: UITextView) {
         selectionDidChange()
     }
 
     private func selectionDidChange() {
         let selection = textView.selectedRange
-        if let typing = typingFormat, typing.location != selection.location || selection.length > 0 {
+        if let typing = typingFormat, storage.length == typing.length,
+           typing.location != selection.location || selection.length > 0 {
             typingFormat = nil
         }
         textView.typingAttributes = typingAttributes(at: selection.location)
@@ -368,7 +391,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             let paragraph = paragraphModel(for: paragraphRange(at: selection.location))
             var format = runBox(forTypingAt: selection.location).format
             change(&format.style, paragraph.properties.styleID)
-            typingFormat = (format, selection.location)
+            typingFormat = (format, selection.location, storage.length)
             textView.typingAttributes = typingAttributes(at: selection.location)
             publishSelection()
             return
