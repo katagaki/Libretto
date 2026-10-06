@@ -31,12 +31,16 @@ enum DOCXReader {
             .map(StyleReader.numbering(from:)) ?? NumberingDefinitions()
 
         let root = try XMLLite.parse(documentData)
-        guard let body = root.firstChild(named: "body") else { throw DOCXError.missingBody }
+        let bodies = root.children(named: "body")
+        guard !bodies.isEmpty else { throw DOCXError.missingBody }
 
         let context = ReadContext(
             namespaces: root.namespaceDeclarations, relationships: relationships, styles: styles
         )
-        var children = body.children
+        // Some writers split the body in two. Rather than lose what the
+        // later ones hold, Libretto reads them as one, ending with the last
+        // one's section; it writes back the single body the format allows.
+        var children = bodies.flatMap(\.children)
         let finalSection = children.last?.name == "sectPr" ? children.removeLast() : nil
         var (blocks, trailing) = context.blocks(from: children)
 
