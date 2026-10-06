@@ -92,6 +92,18 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     func layOutPages(in container: NSTextContainer, startingWith estimate: Int) -> Int {
         var pages = max(1, estimate)
         if container.exclusionPaths.count != pages { configure(container, pages: pages) }
+        ensureLayout(for: container)
+        if NSMaxRange(glyphRange(for: container)) < numberOfGlyphs {
+            // Adding a few pages at a time lays everything out again each
+            // time; measuring the text once without pages, then laying it out
+            // on roughly as many pages as that needs, is far quicker.
+            container.exclusionPaths = []
+            container.size = CGSize(width: geometry.contentWidth, height: 10_000_000)
+            ensureLayout(for: container)
+            let unpaged = usedRect(for: container).maxY
+            pages = max(pages + 1, Int(ceil(unpaged / geometry.contentHeight * 1.1)) + 1)
+            configure(container, pages: pages)
+        }
         var reached = -1
         for _ in 0..<64 {
             ensureLayout(for: container)
