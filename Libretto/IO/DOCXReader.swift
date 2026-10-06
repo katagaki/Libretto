@@ -208,7 +208,8 @@ private final class ReadContext {
         guard let xml = serialize(element) else { return [] }
         let firstRun = firstDescendant(named: "r", in: element)
         let format = firstRun.flatMap { $0.firstChild(named: "rPr") }.map(runFormat) ?? RunFormat()
-        let shown = display.flatMap { $0.isEmpty ? nil : $0 }
+        // Shown within its paragraph, so its own line breaks must not end it.
+        let shown = display.flatMap { $0.isEmpty ? nil : $0.replacingOccurrences(of: "\n", with: "\u{2028}") }
         return [Inline(.paragraphChild(xml: xml, display: shown), format: format, hyperlink: hyperlink)]
     }
 
