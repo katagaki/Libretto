@@ -46,7 +46,6 @@ struct DocumentView: View {
             }
             .toolbar { undoToolbar }
             .toolbar { moreToolbar }
-            .toolbar { sharingToolbar }
             .sheet(item: $state.presentedPanel) { panel in
                 NavigationStack {
                     panelContent(panel)
@@ -68,6 +67,11 @@ struct DocumentView: View {
                 .presentationContentInteraction(.scrolls)
                 .presentationDragIndicator(.hidden)
                 .presentationBackground(.regularMaterial)
+            }
+            .sheet(isPresented: $state.isShowingUnsupportedFeatureNotice) {
+                UnsupportedFeatureNotice(report: document.unsupportedFeatures)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
             }
             .photosPicker(isPresented: $state.isPickingPhoto, selection: $photo, matching: .images)
             .onChange(of: photo) { _, item in
@@ -169,27 +173,28 @@ struct DocumentView: View {
             .disabled(!history.canUndo)
             .keyboardShortcut("z", modifiers: .command)
             .accessibilityIdentifier("undo")
-            if horizontalSizeClass != .compact {
-                redoButton
-            }
+            Button("Toolbar.Redo", systemImage: "arrow.uturn.forward") { history.redo() }
+                .disabled(!history.canRedo)
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .accessibilityIdentifier("redo")
         }
     }
 
-    private var redoButton: some View {
-        Button("Toolbar.Redo", systemImage: "arrow.uturn.forward") { history.redo() }
-            .disabled(!history.canRedo)
-            .keyboardShortcut("z", modifiers: [.command, .shift])
-            .accessibilityIdentifier("redo")
-    }
-
-    /// Secondary actions are gathered into the navigation bar's "…" menu.
+    /// Everything but undo and redo is gathered into the navigation bar's "…"
+    /// menu, so the bar keeps to those two and the menu.
     @ToolbarContentBuilder
     private var moreToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .secondaryAction) {
-            // A narrow bar has no room for Redo and would push it into this
-            // menu itself, below everything here. Placing it keeps Source Code last.
-            if horizontalSizeClass == .compact {
-                redoButton
+            Section {
+                ShareLink(item: export, preview: SharePreview(export.name, image: Image(systemName: "doc.text"))) {
+                    Label("Toolbar.Share.Label", systemImage: "square.and.arrow.up")
+                }
+                if !document.unsupportedFeatures.isEmpty {
+                    Button("Toolbar.UnsupportedFeatures.Label", systemImage: "exclamationmark.triangle") {
+                        state.isShowingUnsupportedFeatureNotice = true
+                    }
+                    .accessibilityIdentifier("unsupportedFeatures")
+                }
             }
             Section {
                 Picker(selection: Binding(get: { state.viewMode }, set: { setMode($0) })) {
@@ -215,35 +220,12 @@ struct DocumentView: View {
             name: fileName.map { ($0 as NSString).deletingPathExtension } ?? String(localized: "Document.DefaultName")
         )
     }
-
-    @ToolbarContentBuilder
-    private var sharingToolbar: some ToolbarContent {
-        // Declared before the share button so it sits beside it on the inside.
-        if !document.unsupportedFeatures.isEmpty {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    state.isShowingUnsupportedFeatureNotice = true
-                } label: {
-                    Image(systemName: "exclamationmark.triangle")
-                }
-                .accessibilityIdentifier("unsupportedFeatures")
-                .accessibilityLabel("Toolbar.UnsupportedFeatures.Label")
-                .popover(isPresented: $state.isShowingUnsupportedFeatureNotice) {
-                    UnsupportedFeatureNotice(report: document.unsupportedFeatures)
-                }
-            }
-        }
-        ToolbarItem(placement: .primaryAction) {
-            ShareLink(item: export, preview: SharePreview(export.name, image: Image(systemName: "doc.text")))
-                .accessibilityLabel("Toolbar.Share.Label")
-        }
-    }
 }
 
-/// What the toolbar's warning button says: which parts of the file Libretto
-/// can only show and keep, and that macros never run.
+/// What the More menu's warning says: which parts of the file Libretto can
+/// only show and keep, and that macros never run.
 ///
-/// A popover rather than an alert: nothing here needs deciding, so it has no
+/// A sheet rather than an alert: nothing here needs deciding, so it has no
 /// business stopping the user before they have seen their document.
 private struct UnsupportedFeatureNotice: View {
     var report: UnsupportedFeatureReport
@@ -256,8 +238,6 @@ private struct UnsupportedFeatureNotice: View {
             Text("Notice.UnsupportedFeatures.Message")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                // A popover sizes itself to its content, and without this the
-                // message is laid out on one unbroken line.
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(report.orderedFeatures, id: \.self) { feature in
@@ -268,10 +248,8 @@ private struct UnsupportedFeatureNotice: View {
             }
         }
         .multilineTextAlignment(.leading)
-        .padding(20)
-        .frame(idealWidth: 300, maxWidth: 340, alignment: .leading)
-        // iPhone turns a popover into a sheet unless it is told not to.
-        .presentationCompactAdaptation(.popover)
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private struct BulletLabelStyle: LabelStyle {
