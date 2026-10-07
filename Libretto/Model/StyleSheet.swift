@@ -271,6 +271,11 @@ struct NumberingDefinitions: Equatable, Sendable {
     /// A list of `kind` to put paragraphs in: one Libretto already made, or a new one.
     mutating func numberingID(for kind: ListKind) -> Int {
         if let existing = added.first(where: { $0.kind == kind }) { return existing.numberingID }
+        return addList(kind)
+    }
+
+    /// A new list of `kind`, numbered from its own start.
+    mutating func addList(_ kind: ListKind) -> Int {
         let numberingID = (instances.keys.max() ?? 0) + 1
         let abstractID = (abstracts.keys.max() ?? -1) + 1
         instances[numberingID] = abstractID
