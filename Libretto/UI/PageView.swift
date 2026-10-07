@@ -15,6 +15,11 @@ struct PageView: UIViewRepresentable {
         controller.state = state
         state.controller = controller
         connect(controller)
+        if state.wantsFind {
+            state.wantsFind = false
+            // Once the view is in a window, where it can take the keyboard.
+            DispatchQueue.main.async { controller.showFind() }
+        }
         return controller.view
     }
 

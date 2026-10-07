@@ -98,6 +98,12 @@ final class CodeEditorController: NSObject, UITextViewDelegate {
         sync()
     }
 
+    /// Opens the find bar, with replacing.
+    func showFind() {
+        if !textView.isFirstResponder { textView.becomeFirstResponder() }
+        textView.findInteraction?.presentFindNavigator(showingReplace: true)
+    }
+
     private func setText(_ text: String) {
         let selection = textView.selectedRange
         textView.textStorage.setAttributedString(NSAttributedString(string: text, attributes: view.textAttributes))
@@ -462,6 +468,7 @@ final class CodeTextView: UITextView {
         smartDashesType = .no
         smartInsertDeleteType = .no
         inlinePredictionType = .no
+        isFindInteractionEnabled = true
         accessibilityIdentifier = "codeText"
     }
 

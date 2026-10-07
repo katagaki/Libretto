@@ -184,10 +184,14 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         if replacement == "\n", range.length == 0 {
             return handleReturn(at: range, paragraph: paragraph)
         }
-        if target == range, replacement == text { return true }
+        // Find and Replace replaces text away from the selection, where the
+        // typing attributes do not belong; the replacement looks like what it replaces.
+        let isReplacingElsewhere = range.length > 0 && !replacement.isEmpty
+            && range != textView.selectedRange && textView.markedTextRange == nil
+        if target == range, replacement == text, !isReplacingElsewhere { return true }
 
         // Anything adjusted is inserted by hand, with the typing attributes.
-        let attributes = typingAttributes(at: target.location)
+        let attributes = typingAttributes(at: isReplacingElsewhere ? target.location + 1 : target.location)
         storage.replaceCharacters(in: target, with: NSAttributedString(string: replacement, attributes: attributes))
         textView.selectedRange = NSRange(location: target.location + (replacement as NSString).length, length: 0)
         textDidChange(touchingParagraphs: replacement.contains("\n") || storage.string.isEmpty)
@@ -680,6 +684,14 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         sync(scope: .table)
         selectionDidChange()
     }
+
+    // MARK: - Finding
+
+    /// Opens the find bar, with replacing, over the keyboard.
+    func showFind() {
+        if !textView.isFirstResponder { textView.becomeFirstResponder() }
+        textView.findInteraction?.presentFindNavigator(showingReplace: true)
+    }
 }
 
 /// The text view the pages show. Its own undo is off: every change goes
@@ -700,6 +712,8 @@ final class DocumentTextView: UITextView {
         allowsEditingTextAttributes = false
         dataDetectorTypes = []
         smartInsertDeleteType = .no
+        // ⌘F and the More menu's Find and Replace.
+        isFindInteractionEnabled = true
         accessibilityIdentifier = "documentText"
     }
 

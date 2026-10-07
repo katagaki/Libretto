@@ -112,6 +112,9 @@ final class EditorState {
     var errorMessage: String?
     var isShowingUnsupportedFeatureNotice = false
     var isPickingPhoto = false
+    /// Find was asked for from the reader, which has no find bar: the page
+    /// view opens one once it is on screen.
+    @ObservationIgnored var wantsFind = false
     /// The page view zooms out to fit; this is how far, for the zoom readout.
     var zoom: CGFloat = 1
 

@@ -58,6 +58,26 @@ struct ControllerTests {
         #expect(paragraph.inlines[1].format.style.isBold == true)
     }
 
+    @Test("Replacing found text keeps that text's formatting, wherever the caret is")
+    func replaceFound() throws {
+        let (controller, _, latest) = makeController()
+        type("One two three", into: controller)
+        controller.textView.selectedRange = NSRange(location: 4, length: 3)
+        controller.toggleBold()
+        // Find and Replace replaces away from the selection.
+        controller.textView.selectedRange = NSRange(location: 0, length: 0)
+        let textView = controller.textView
+        if controller.textView(textView, shouldChangeTextIn: NSRange(location: 4, length: 3), replacementText: "2") {
+            textView.textStorage.replaceCharacters(in: NSRange(location: 4, length: 3), with: "2")
+        }
+        controller.flush()
+
+        let document = try #require(latest())
+        guard case .paragraph(let paragraph) = document.body[0] else { return }
+        #expect(paragraph.plainText == "One 2 three")
+        #expect(paragraph.inlines.first { $0.plainText == "2" }?.format.style.isBold == true)
+    }
+
     @Test("Return after a heading starts a body paragraph")
     func nextStyle() throws {
         let (controller, _, latest) = makeController()

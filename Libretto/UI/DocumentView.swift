@@ -145,6 +145,18 @@ struct DocumentView: View {
         .padding(.bottom, 12)
     }
 
+    /// Opens the find bar. The reader has none, so find goes to the pages.
+    private func find() {
+        if isCode {
+            state.codeEditor?.showFind()
+        } else if state.viewMode == .page, let controller = state.controller {
+            controller.showFind()
+        } else {
+            state.wantsFind = true
+            setMode(.page)
+        }
+    }
+
     private func setMode(_ mode: ViewMode) {
         guard mode != state.viewMode else { return }
         // Typing still on its way to the document goes with it.
@@ -206,6 +218,8 @@ struct DocumentView: View {
                 ShareLink(item: export, preview: SharePreview(export.name, image: Image(systemName: "doc.text"))) {
                     Label("Toolbar.Share.Label", systemImage: "square.and.arrow.up")
                 }
+                Button("Toolbar.Find", systemImage: "magnifyingglass", action: find)
+                    .accessibilityIdentifier("find")
                 if !document.unsupportedFeatures.isEmpty {
                     Button("Toolbar.UnsupportedFeatures.Label", systemImage: "exclamationmark.triangle") {
                         state.isShowingUnsupportedFeatureNotice = true
