@@ -73,20 +73,22 @@ enum SyntaxHighlighter {
         text.endEditing()
     }
 
-    /// Xcode's default colours, light and dark.
+    /// Xcode's default colours, light and dark, darkened or lightened in
+    /// their own hue where they fell short of a contrast of 7.5:1 against
+    /// white, or 10:1 against black.
     static func color(for kind: SyntaxKind, scheme: ColorScheme) -> UIColor {
         let dark = scheme == .dark
         let hex: UInt32
         switch kind {
-        case .keyword: hex = dark ? 0xFF7AB2 : 0x9B2393
+        case .keyword: hex = dark ? 0xFF91BF : 0x912189
         case .type: hex = dark ? 0xDABAFF : 0x3900A0
-        case .string: hex = dark ? 0xFF8170 : 0xC41A16
-        case .comment: hex = dark ? 0x7F8C98 : 0x5D6C79
+        case .string: hex = dark ? 0xFF978A : 0xA81613
+        case .comment: hex = dark ? 0xACB5BC : 0x4A5660
         case .number: hex = dark ? 0xD9C97C : 0x1C00CF
-        case .attribute: hex = dark ? 0xCC9768 : 0x815F03
-        case .tag: hex = dark ? 0x5DD8FF : 0x0F68A0
-        case .property: hex = dark ? 0x67B7A4 : 0x326D74
-        case .variable: hex = dark ? 0xA167E6 : 0x6C36A9
+        case .attribute: hex = dark ? 0xD6AB85 : 0x6D5003
+        case .tag: hex = dark ? 0x5DD8FF : 0x0D5786
+        case .property: hex = dark ? 0x7CC1B0 : 0x2A5B60
+        case .variable: hex = dark ? 0xC8A7F0 : 0x6C36A9
         }
         return UIColor(
             red: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255,
