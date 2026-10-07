@@ -26,6 +26,9 @@ enum DOCXWriter {
             package.writeHeaderFooter(text, relationshipID: id, existing: document.package.relationships[id],
                                       styles: document.styles)
         }
+        if document.comments != document.originalComments {
+            package.writeComments(document.comments, styles: document.styles)
+        }
         if document.evenAndOddHeaders != document.originalEvenAndOddHeaders {
             package.editSettings { settings in
                 settings.children(named: "evenAndOddHeaders").forEach(settings.removeChild)
@@ -253,6 +256,28 @@ enum HeaderFooterWriter {
             }
             return output + "</w:p>"
         }
+    }
+}
+
+// MARK: - Comments
+
+enum CommentWriter {
+    /// A `w:comment`, a paragraph per line, the last carrying the comment's paragraph ID.
+    static func xml(_ comment: Comment, paragraphStyle: String?, referenceStyle: String?) -> String {
+        var attributes = " w:id=\"\(XMLLite.escape(comment.id))\" w:author=\"\(XMLLite.escape(comment.author))\""
+        if let date = comment.date { attributes += " w:date=\"\(XMLLite.escape(date))\"" }
+        if let initials = comment.initials { attributes += " w:initials=\"\(XMLLite.escape(initials))\"" }
+        let lines = comment.text.components(separatedBy: "\n")
+        let pPr = paragraphStyle.map { "<w:pPr><w:pStyle w:val=\"\($0)\"/></w:pPr>" } ?? ""
+        let rPr = referenceStyle.map { "<w:rPr><w:rStyle w:val=\"\($0)\"/></w:rPr>" } ?? ""
+        let paragraphs = lines.enumerated().map { index, line in
+            let paraID = index == lines.count - 1 ? comment.paraID : nil
+            let id = paraID.map { " w14:paraId=\"\($0)\" w14:textId=\"77777777\"" } ?? ""
+            let mark = index == 0 ? "<w:r>\(rPr)<w:annotationRef/></w:r>" : ""
+            let text = line.isEmpty ? "" : "<w:r><w:t xml:space=\"preserve\">\(XMLLite.escape(line))</w:t></w:r>"
+            return "<w:p\(id)>\(pPr)\(mark)\(text)</w:p>"
+        }.joined()
+        return "<w:comment\(attributes)>\(paragraphs)</w:comment>"
     }
 }
 
@@ -497,6 +522,68 @@ private struct PackageEditor {
         relationships.append("<Relationship Id=\"\(relationshipID)\" Type=\"\(type)\" Target=\"\(file)\"/>")
         let contentType = text.isFooter ? OOXML.footerContentType : OOXML.headerContentType
         overrides.append("<Override PartName=\"/\(path)\" ContentType=\"\(contentType)\"/>")
+    }
+
+    /// Writes the comments part: comments untouched as they were read, the
+    /// rest afresh; and Word's extensions to it, which say which comments are
+    /// resolved and which reply to which.
+    mutating func writeComments(_ comments: [Comment], styles: StyleSheet) {
+        let path = partPath(
+            ofType: OOXML.commentsType, defaultName: "comments.xml", contentType: OOXML.commentsContentType,
+            empty: "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                + "<w:comments xmlns:w=\"\(OOXML.wordNamespace)\" xmlns:w14=\"\(OOXML.w14Namespace)\"></w:comments>"
+        )
+        let paragraphStyle = styles.styles["CommentText"] != nil ? "CommentText" : nil
+        let referenceStyle = styles.styles["CommentReference"] != nil ? "CommentReference" : nil
+        edit(path) { root in
+            var namespaces = root.namespaceDeclarations
+            namespaces["w"] = namespaces["w"] ?? OOXML.wordNamespace
+            if namespaces["w14"] == nil {
+                root.declareNamespaces(["w14": OOXML.w14Namespace])
+                namespaces["w14"] = OOXML.w14Namespace
+            }
+            let existing = Dictionary(
+                root.children(named: "comment").compactMap { element in element.attribute("id").map { ($0, element) } },
+                uniquingKeysWith: { first, _ in first }
+            )
+            root.children(named: "comment").forEach(root.removeChild)
+            for comment in comments {
+                // Resolving a comment from before paragraph IDs gives it one, which it must be written with.
+                let keepsID = comment.paraID.map { comment.originalXML?.contains("\"\($0)\"") ?? false } ?? true
+                if let element = existing[comment.id], comment.text == comment.originalText,
+                   comment.originalXML != nil, keepsID {
+                    root.insertChild(element, at: root.children.count)
+                } else if let element = XMLLite.fragment(
+                    CommentWriter.xml(comment, paragraphStyle: paragraphStyle, referenceStyle: referenceStyle),
+                    namespaces: namespaces.filter { !$0.key.isEmpty }
+                ) {
+                    root.insertChild(element, at: root.children.count)
+                }
+            }
+        }
+
+        let extended = comments.filter { $0.paraID != nil }
+        guard !extended.isEmpty else { return }
+        let extendedPath = partPath(
+            ofType: OOXML.commentsExtendedType, defaultName: "commentsExtended.xml",
+            contentType: OOXML.commentsExtendedContentType,
+            empty: "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                + "<w15:commentsEx xmlns:w15=\"\(OOXML.w15Namespace)\"></w15:commentsEx>"
+        )
+        edit(extendedPath) { root in
+            let prefix = root.namespaceDeclarations.first { $0.value == OOXML.w15Namespace }?.key ?? "w15"
+            root.children(named: "commentEx").forEach(root.removeChild)
+            for comment in extended {
+                guard let paraID = comment.paraID else { continue }
+                var attributes = ["paraId": paraID, "done": comment.isDone ? "1" : "0"]
+                if let parent = comment.parentParaID { attributes["paraIdParent"] = parent }
+                let element = XMLElement(
+                    name: "commentEx", qualifiedName: "\(prefix):commentEx", attributes: attributes,
+                    qualifiedAttributes: Dictionary(uniqueKeysWithValues: attributes.map { ("\(prefix):\($0.key)", $0.value) })
+                )
+                root.insertChild(element, at: root.children.count)
+            }
+        }
     }
 
     /// Edits the settings part, making one if the package has none.

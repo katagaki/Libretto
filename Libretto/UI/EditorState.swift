@@ -9,6 +9,7 @@ enum EditorPanel: String, Identifiable, Hashable {
     case insertTable
     case link
     case headerFooter
+    case comments
 
     var id: String { rawValue }
 
@@ -21,6 +22,7 @@ enum EditorPanel: String, Identifiable, Hashable {
         case .insertTable: return String(localized: "Panel.InsertTable.Title")
         case .link: return String(localized: "Panel.Link.Title")
         case .headerFooter: return String(localized: "Panel.HeaderFooter.Title")
+        case .comments: return String(localized: "Panel.Comments.Title")
         }
     }
 }
@@ -59,6 +61,7 @@ enum EditScope: Equatable {
     case table
     case pageSetup
     case headerFooter
+    case comment
     case other
 
     /// Typing, and editing a table's text or a header, arrive a keystroke at a time.
@@ -74,6 +77,7 @@ enum EditScope: Equatable {
         case .table: return String(localized: "Undo.Table")
         case .pageSetup: return String(localized: "Undo.PageSetup")
         case .headerFooter: return String(localized: "Undo.HeaderFooter")
+        case .comment: return String(localized: "Undo.Comment")
         case .other: return String(localized: "Undo.Edit")
         }
     }
@@ -117,6 +121,10 @@ final class EditorState {
     var selectedTableID: Table.ID?
     /// Whether the selection is in a link, which the link panel edits.
     var isOnLink = false
+    /// The comments on the text at the selection.
+    var selectedCommentIDs: [String] = []
+    /// The comment the comments panel opens to.
+    var focusedCommentID: String?
     /// What the last change was, read by the history when it records it.
     var pendingScope: EditScope = .other
     var errorMessage: String?

@@ -13,22 +13,24 @@ import UniformTypeIdentifiers
 /// undo, a panel — the text is rendered afresh.
 @MainActor
 final class DocumentTextController: NSObject, UITextViewDelegate {
-    private(set) var document: WordDocument
+    var document: WordDocument
     private var scheme: ColorScheme
-    private let storage = NSTextStorage()
-    private let layoutManager: PageLayoutManager
-    private let container = NSTextContainer()
+    let storage = NSTextStorage()
+    let layoutManager: PageLayoutManager
+    let container = NSTextContainer()
     let textView: DocumentTextView
     let view: PagedDocumentView
 
     private(set) var geometry: PageGeometry
-    private var context: RenderContext
+    var context: RenderContext
     private let images = ImageStore()
     /// The body the text was last rendered from or read back as.
     private var lastBody: [Block] = []
-    private var finalParagraph = Paragraph()
-    private var trailingMarkers: [Inline] = []
-    private var pageCount = 1
+    var finalParagraph = Paragraph()
+    var trailingMarkers: [Inline] = []
+    var pageCount = 1
+    /// Each comment's text, by comment ID, as of the last layout.
+    var commentRanges: [String: NSRange] = [:]
     private var syncTask: Task<Void, Never>?
     /// Formatting chosen with nothing selected, for the text typed next.
     /// The text's length when it was chosen tells typing apart from moving
@@ -61,7 +63,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
 
     // MARK: - Rendering
 
-    private func refreshContext() {
+    func refreshContext() {
         context = RenderContext(document: document, scheme: scheme, images: images)
         context.contentWidth = geometry.contentWidth
         context.contentHeight = geometry.contentHeight
@@ -71,7 +73,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
 
     /// Renders the whole document into the text, keeping the selection
     /// roughly where it was.
-    private func render() {
+    func render() {
         refreshContext()
         let selection = textView.selectedRange
         let rendered = DocumentRenderer.render(document.body, context: context)
@@ -85,7 +87,8 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         selectionDidChange()
     }
 
-    private func relayout() {
+    func relayout() {
+        refreshCommentRanges()
         pageCount = layoutManager.layOutPages(in: container, startingWith: pageCount)
         view.update(geometry: geometry, pages: pageCount, texts: WordDocumentHeaderFooter(document: document))
     }
@@ -131,7 +134,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         sync(scope: .typing)
     }
 
-    private func sync(scope: EditScope) {
+    func sync(scope: EditScope) {
         syncTask?.cancel()
         syncTask = nil
         let read = AttributedReader.blocks(
@@ -147,7 +150,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     }
 
     /// After a command changed the text's model: restyle, renumber, lay out, hand over.
-    private func commit(restyling range: NSRange, scope: EditScope) {
+    func commit(restyling range: NSRange, scope: EditScope) {
         storage.beginEditing()
         let relabelled = DocumentRenderer.relabel(storage, finalParagraph: finalParagraph, context: context)
         DocumentRenderer.restyle(storage, paragraphsIn: range, finalParagraph: finalParagraph, context: context)
@@ -281,7 +284,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         selectionDidChange()
     }
 
-    private func selectionDidChange() {
+    func selectionDidChange() {
         let selection = textView.selectedRange
         if let typing = typingFormat, storage.length == typing.length,
            typing.location != selection.location || selection.length > 0 {
@@ -296,27 +299,27 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
 
     // MARK: - Reading the text's model
 
-    private func hasMark(_ paragraph: NSRange) -> Bool {
+    func hasMark(_ paragraph: NSRange) -> Bool {
         paragraph.length > 0
             && (storage.string as NSString).character(at: NSMaxRange(paragraph) - 1) == TextCharacters.paragraphBreakUnit
     }
 
-    private func isBlockLine(_ paragraph: NSRange) -> Bool {
+    func isBlockLine(_ paragraph: NSRange) -> Bool {
         hasMark(paragraph) && storage.attribute(.librettoBlock, at: NSMaxRange(paragraph) - 1, effectiveRange: nil) != nil
     }
 
-    private func paragraphModel(for range: NSRange) -> Paragraph {
+    func paragraphModel(for range: NSRange) -> Paragraph {
         DocumentRenderer.paragraphBox(in: storage, paragraphRange: range)?.paragraph ?? finalParagraph
     }
 
-    private func paragraphRange(at location: Int) -> NSRange {
+    func paragraphRange(at location: Int) -> NSRange {
         (storage.string as NSString).paragraphRange(for: NSRange(location: min(location, storage.length), length: 0))
     }
 
     /// The run formatting text typed at `location` takes: whatever was
     /// chosen for it, else the text before it in the same paragraph, else
     /// the paragraph's mark, which looks like the paragraph's last text.
-    private func runBox(forTypingAt location: Int) -> RunBox {
+    func runBox(forTypingAt location: Int) -> RunBox {
         if let typing = typingFormat, typing.location == location { return RunBox(typing.format, hyperlink: nil) }
         let paragraph = paragraphRange(at: location)
         let string = storage.string as NSString
@@ -334,7 +337,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         return RunBox(RunFormat(), hyperlink: nil)
     }
 
-    private func typingAttributes(at location: Int) -> [NSAttributedString.Key: Any] {
+    func typingAttributes(at location: Int) -> [NSAttributedString.Key: Any] {
         let range = paragraphRange(at: location)
         let paragraph = isBlockLine(range) ? Paragraph() : paragraphModel(for: range)
         let label = range.length > 0
@@ -348,7 +351,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         return attributes
     }
 
-    private func publishSelection() {
+    func publishSelection() {
         guard let state else { return }
         let selection = textView.selectedRange
         let range = paragraphRange(at: selection.location)
@@ -388,13 +391,14 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         if state.selectedTableID != table { state.selectedTableID = table }
         let isOnLink = selectedLink != nil
         if state.isOnLink != isOnLink { state.isOnLink = isOnLink }
+        publishSelectedComments()
     }
 
     // MARK: - Character formatting
 
     /// Changes the run formatting of the selection, or of what is typed next
     /// when nothing is selected.
-    private func editRuns(_ change: (inout RunStyle, _ paragraphStyleID: String?) -> Void) {
+    func editRuns(_ change: (inout RunStyle, _ paragraphStyleID: String?) -> Void) {
         let selection = textView.selectedRange
         if selection.length == 0 {
             let paragraph = paragraphModel(for: paragraphRange(at: selection.location))
@@ -469,7 +473,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     // MARK: - Paragraph formatting
 
     /// Changes the properties of every paragraph the selection touches.
-    private func editParagraphs(scope: EditScope = .formatting, _ change: (inout ParagraphProperties) -> Void) {
+    func editParagraphs(scope: EditScope = .formatting, _ change: (inout ParagraphProperties) -> Void) {
         let selection = textView.selectedRange
         let string = storage.string as NSString
         var location = selection.location
@@ -566,7 +570,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
 
     // MARK: - Inserting
 
-    private func insert(_ text: NSAttributedString, at range: NSRange, selecting location: Int) {
+    func insert(_ text: NSAttributedString, at range: NSRange, selecting location: Int) {
         storage.replaceCharacters(in: range, with: text)
         textView.selectedRange = NSRange(location: min(location, storage.length), length: 0)
         storage.beginEditing()
@@ -764,7 +768,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     // MARK: - Tables
 
     /// The text range of a block's line, mark included.
-    private func lineRange(ofBlock id: UUID) -> NSRange? {
+    func lineRange(ofBlock id: UUID) -> NSRange? {
         var found: NSRange?
         storage.enumerateAttribute(.librettoBlock, in: NSRange(location: 0, length: storage.length)) { value, range, stop in
             guard let box = value as? BlockBox, box.block.id == id else { return }

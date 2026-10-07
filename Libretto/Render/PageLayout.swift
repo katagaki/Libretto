@@ -67,6 +67,10 @@ struct PageGeometry: Equatable {
 final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     var geometry: PageGeometry
     var styles = StyleSheet()
+    /// The text comments are on, shaded behind it; the comment at the
+    /// selection more strongly than the rest.
+    var commentRanges: [NSRange] = []
+    var activeCommentRanges: [NSRange] = []
 
     init(geometry: PageGeometry) {
         self.geometry = geometry
@@ -162,6 +166,24 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         rect.size.height = nextPageTop - rect.minY
         lineFragmentRect.pointee = rect
         return true
+    }
+
+    // MARK: - Comments
+
+    override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
+        super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
+        guard !commentRanges.isEmpty, let container = textContainers.first else { return }
+        let shown = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+        for range in commentRanges where range.length > 0 && NSIntersectionRange(range, shown).length > 0 {
+            let glyphs = glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            let alpha: CGFloat = activeCommentRanges.contains(range) ? 0.5 : 0.25
+            UIColor.systemYellow.withAlphaComponent(alpha).setFill()
+            enumerateEnclosingRects(
+                forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: container
+            ) { rect, _ in
+                UIRectFillUsingBlendMode(rect.offsetBy(dx: origin.x, dy: origin.y), .normal)
+            }
+        }
     }
 
     // MARK: - List labels

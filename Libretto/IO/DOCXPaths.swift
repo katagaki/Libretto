@@ -33,6 +33,13 @@ enum OOXML {
     static let footerType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer"
     static let hyperlinkType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
     static let settingsType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings"
+    static let commentsType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+    static let commentsExtendedType = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
+    static let commentsContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
+    static let commentsExtendedContentType =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"
+    static let w14Namespace = "http://schemas.microsoft.com/office/word/2010/wordml"
+    static let w15Namespace = "http://schemas.microsoft.com/office/word/2012/wordml"
     static let headerContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
     static let footerContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
 

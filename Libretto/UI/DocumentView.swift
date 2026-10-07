@@ -148,6 +148,12 @@ struct DocumentView: View {
         .padding(.bottom, 12)
     }
 
+    /// Opens a panel, on the pages, where panels act on the selection.
+    private func openPanel(_ panel: EditorPanel) {
+        setMode(.page)
+        state.presentedPanel = panel
+    }
+
     /// Opens the find bar. The reader has none, so find goes to the pages.
     private func find() {
         if isCode {
@@ -181,6 +187,7 @@ struct DocumentView: View {
         case .insertTable: InsertTablePanel(state: state)
         case .link: LinkPanel(state: state)
         case .headerFooter: HeaderFooterPanel(document: wordDocument, state: state)
+        case .comments: CommentsPanel(document: wordDocument, state: state)
         }
     }
 
@@ -225,6 +232,10 @@ struct DocumentView: View {
                 }
                 Button("Toolbar.Find", systemImage: "magnifyingglass", action: find)
                     .accessibilityIdentifier("find")
+                if !isCode {
+                    Button("Toolbar.Comments", systemImage: "text.bubble") { openPanel(.comments) }
+                        .accessibilityIdentifier("comments")
+                }
                 if !document.unsupportedFeatures.isEmpty {
                     Button("Toolbar.UnsupportedFeatures.Label", systemImage: "exclamationmark.triangle") {
                         state.isShowingUnsupportedFeatureNotice = true

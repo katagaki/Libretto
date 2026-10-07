@@ -54,7 +54,7 @@ enum DOCXReader {
 
         var report = context.report
         if parts.keys.contains(where: { $0.lowercased().hasSuffix("vbaproject.bin") }) { report.insert(.macros) }
-        if parts.keys.contains(where: { $0.hasSuffix("comments.xml") }) { report.insert(.comments) }
+
 
         // Every header and footer a section refers to, by relationship.
         var headerFooters: [String: HeaderFooterText] = [:]
@@ -84,6 +84,11 @@ enum DOCXReader {
         document.trailingXML = trailing
         document.evenAndOddHeaders = evenAndOdd
         document.originalEvenAndOddHeaders = evenAndOdd
+        if let comments = part(ofType: OOXML.commentsType).flatMap({ try? XMLLite.parse($0) }) {
+            let extended = part(ofType: OOXML.commentsExtendedType).flatMap { try? XMLLite.parse($0) }
+            document.comments = CommentReader.comments(from: comments, extended: extended)
+            document.originalComments = document.comments
+        }
         return document
     }
 
@@ -201,7 +206,6 @@ private final class ReadContext {
             return child.children.flatMap { inlines(from: $0, hyperlink: link) }
         case "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd",
              "commentRangeStart", "commentRangeEnd":
-            if child.name.hasPrefix("comment") { report.insert(.comments) }
             return marker(child, hyperlink: hyperlink)
         case "ins", "moveTo", "del", "moveFrom":
             report.insert(.trackedChanges)
@@ -298,7 +302,6 @@ private final class ReadContext {
                 footnoteCount += 1
                 keep(child, display: String(footnoteCount))
             case "commentReference":
-                report.insert(.comments)
                 keep(child, display: nil)
             default:
                 // Field characters, field codes and other things that take no room.
@@ -596,6 +599,30 @@ enum StyleReader {
             result.instances[id] = abstract
         }
         return result
+    }
+}
+
+enum CommentReader {
+    static func comments(from root: XMLElement, extended: XMLElement?) -> [Comment] {
+        var states: [String: (done: Bool, parent: String?)] = [:]
+        for entry in extended?.children(named: "commentEx") ?? [] {
+            guard let paraID = entry.attribute("paraId") else { continue }
+            states[paraID] = (entry.attribute("done") == "1", entry.attribute("paraIdParent"))
+        }
+        let namespaces = root.namespaceDeclarations
+        return root.children(named: "comment").compactMap { element in
+            guard let id = element.attribute("id") else { return nil }
+            let paragraphs = element.children(named: "p")
+            let text = paragraphs.map { HeaderFooterReader.plainText(of: $0) }.joined(separator: "\n")
+            let paraID = paragraphs.last?.attribute("paraId")
+            let state = paraID.flatMap { states[$0] }
+            return Comment(
+                id: id, author: element.attribute("author") ?? "", initials: element.attribute("initials"),
+                date: element.attribute("date"), text: text, paraID: paraID, isDone: state?.done ?? false,
+                parentParaID: state?.parent,
+                originalXML: XMLLite.serialize(element, inheritedNamespaces: namespaces), originalText: text
+            )
+        }
     }
 }
 

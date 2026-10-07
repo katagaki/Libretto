@@ -21,6 +21,10 @@ struct WordDocument: Equatable, Sendable {
     /// settings part, and whether they did when the file was read.
     var evenAndOddHeaders = false
     var originalEvenAndOddHeaders = false
+    /// The comments, in the order the comments part lists them, and the IDs
+    /// it had when read, to tell what was added and taken away.
+    var comments: [Comment] = []
+    var originalComments: [Comment] = []
     /// Body-level elements after the last block, before the section properties.
     var trailingXML: [String] = []
     /// The original package, part by part, for writing back what is not modelled.
@@ -571,6 +575,51 @@ struct HeaderFooterText: Equatable, Sendable {
     func resolved(page: Int, of count: Int) -> String {
         text.replacingOccurrences(of: Self.pageNumberPlaceholder, with: String(page))
             .replacingOccurrences(of: Self.pageCountPlaceholder, with: String(count))
+    }
+}
+
+// MARK: - Comments
+
+/// A comment, from the comments part, with its resolved state and the
+/// comment it replies to, from Word's comments extensions.
+struct Comment: Equatable, Sendable, Identifiable {
+    /// `w:id`, which the comment's range and reference in the body carry.
+    var id: String
+    var author: String
+    var initials: String?
+    /// As the file spells it, ISO 8601.
+    var date: String?
+    /// The comment's paragraphs, a line each.
+    var text: String
+    /// The `w14:paraId` of the comment's last paragraph, which resolving
+    /// and replying refer to.
+    var paraID: String?
+    var isDone = false
+    /// The `paraID` of the comment this one replies to.
+    var parentParaID: String?
+    /// The `w:comment` element as read, written back while the text is unchanged.
+    var originalXML: String?
+    var originalText: String?
+
+    var dateValue: Date? {
+        date.flatMap { ISO8601DateFormatter().date(from: $0) }
+    }
+}
+
+extension WordDocument {
+    /// A comment ID not yet in use.
+    func unusedCommentID() -> String {
+        String((comments.compactMap { Int($0.id) }.max() ?? -1) + 1)
+    }
+
+    /// A paragraph ID for a new comment's paragraph: eight hex digits, below
+    /// 0x80000000 as Word requires, and unlike any the comments use.
+    func unusedCommentParaID() -> String {
+        let used = Set(comments.compactMap(\.paraID))
+        while true {
+            let candidate = String(format: "%08X", UInt32.random(in: 0x1000_0000..<0x7FFF_FFFF))
+            if !used.contains(candidate) { return candidate }
+        }
     }
 }
 

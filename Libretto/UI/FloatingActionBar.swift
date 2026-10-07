@@ -53,12 +53,15 @@ struct FloatingActionBar: View {
                             tableGroup.id(Self.selectionActionsID)
                         } else if state.isOnLink {
                             linkGroup.id(Self.selectionActionsID)
+                        } else if !state.selectedCommentIDs.isEmpty {
+                            commentGroup.id(Self.selectionActionsID)
                         }
                     }
                 }
                 .padding(.horizontal, 12)
                 .animation(.snappy(duration: 0.2), value: state.selectedTableID)
                 .animation(.snappy(duration: 0.2), value: state.isOnLink)
+                .animation(.snappy(duration: 0.2), value: state.selectedCommentIDs)
             }
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
@@ -102,6 +105,7 @@ struct FloatingActionBar: View {
             Button("Insert.Link", systemImage: "link") { state.presentedPanel = .link }
             Button("Insert.PageBreak", systemImage: "doc.on.doc") { controller?.insertPageBreak() }
             Button("Insert.HeaderFooter", systemImage: "menubar.rectangle") { state.presentedPanel = .headerFooter }
+            Button("Insert.Comment", systemImage: "plus.bubble") { state.presentedPanel = .comments }
         } label: {
             menuLabel("plus")
         }
@@ -119,6 +123,19 @@ struct FloatingActionBar: View {
             action("trash", isOn: false, label: "ActionBar.DeleteTable") {
                 controller?.deleteSelectedTable()
             }
+        }
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    /// The comments on the text at the selection.
+    private var commentGroup: some View {
+        group {
+            action("text.bubble", isOn: state.presentedPanel == .comments, label: "ActionBar.ShowComments") {
+                state.focusedCommentID = state.selectedCommentIDs.first
+                state.presentedPanel = .comments
+            }
+            .matchedTransitionSource(id: EditorPanel.comments, in: namespace)
+            .accessibilityIdentifier("showComments")
         }
         .transition(.scale.combined(with: .opacity))
     }
