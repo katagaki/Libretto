@@ -7,17 +7,24 @@ extension UTType {
     /// The `.docm` document, which may carry macros. It does not conform to
     /// the plain document type, so it is asked about in its own right.
     static let macroEnabledDocument = UTType("org.openxmlformats.wordprocessingml.document.macroenabled") ?? .data
+    /// Markdown, declared by the app. It conforms to plain text, so it is asked about first.
+    static let markdownDocument = UTType("net.daringfireball.markdown") ?? .plainText
 }
 
 /// The app's document: a word-processing document, loaded from `.docx` or
-/// `.docm`, or from a plain text file.
+/// `.docm`, or from a Markdown or plain text file.
 ///
 /// A `.docm` opens like any other document. Its macros are kept, and saved
 /// back with it, but Libretto never runs them. A text file is saved back as
-/// text, so any formatting given to it is not kept.
+/// text, so any formatting given to it is not kept, and a Markdown file keeps
+/// only the formatting Markdown has.
 struct LibrettoDocument: FileDocument {
-    static let readableContentTypes: [UTType] = [.openXMLDocument, .macroEnabledDocument, .plainText]
-    static let writableContentTypes: [UTType] = [.openXMLDocument, .macroEnabledDocument, .plainText]
+    static let readableContentTypes: [UTType] = [
+        .openXMLDocument, .macroEnabledDocument, .markdownDocument, .plainText,
+    ]
+    static let writableContentTypes: [UTType] = [
+        .openXMLDocument, .macroEnabledDocument, .markdownDocument, .plainText,
+    ]
 
     var document: WordDocument
 
@@ -37,7 +44,9 @@ struct LibrettoDocument: FileDocument {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        if configuration.contentType.conforms(to: .plainText) {
+        if configuration.contentType.conforms(to: .markdownDocument) {
+            document = MarkdownReader.document(from: data)
+        } else if configuration.contentType.conforms(to: .plainText) {
             document = PlainText.document(from: data)
         } else {
             document = try DOCXReader.document(from: data)
@@ -45,6 +54,9 @@ struct LibrettoDocument: FileDocument {
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        if configuration.contentType.conforms(to: .markdownDocument) {
+            return FileWrapper(regularFileWithContents: MarkdownWriter.data(from: document))
+        }
         if configuration.contentType.conforms(to: .plainText) {
             return FileWrapper(regularFileWithContents: PlainText.data(from: document))
         }
