@@ -9,13 +9,15 @@ extension UTType {
     static let macroEnabledDocument = UTType("org.openxmlformats.wordprocessingml.document.macroenabled") ?? .data
 }
 
-/// The app's document: a word-processing document, loaded from `.docx` or `.docm`.
+/// The app's document: a word-processing document, loaded from `.docx` or
+/// `.docm`, or from a plain text file.
 ///
 /// A `.docm` opens like any other document. Its macros are kept, and saved
-/// back with it, but Libretto never runs them.
+/// back with it, but Libretto never runs them. A text file is saved back as
+/// text, so any formatting given to it is not kept.
 struct LibrettoDocument: FileDocument {
-    static let readableContentTypes: [UTType] = [.openXMLDocument, .macroEnabledDocument]
-    static let writableContentTypes: [UTType] = [.openXMLDocument, .macroEnabledDocument]
+    static let readableContentTypes: [UTType] = [.openXMLDocument, .macroEnabledDocument, .plainText]
+    static let writableContentTypes: [UTType] = [.openXMLDocument, .macroEnabledDocument, .plainText]
 
     var document: WordDocument
 
@@ -35,10 +37,17 @@ struct LibrettoDocument: FileDocument {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        document = try DOCXReader.document(from: data)
+        if configuration.contentType.conforms(to: .plainText) {
+            document = PlainText.document(from: data)
+        } else {
+            document = try DOCXReader.document(from: data)
+        }
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        if configuration.contentType.conforms(to: .plainText) {
+            return FileWrapper(regularFileWithContents: PlainText.data(from: document))
+        }
         // A `.docx` cannot hold macros, and Word will not open one that claims to.
         let keepsMacros = configuration.contentType.conforms(to: .macroEnabledDocument)
         return FileWrapper(regularFileWithContents: try DOCXWriter.data(
