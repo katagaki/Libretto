@@ -86,11 +86,19 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     }
 
     private func relayout() {
+        highlightSyntax()
         pageCount = layoutManager.layOutPages(in: container, startingWith: pageCount)
         view.update(
             geometry: geometry, pages: pageCount, setup: document.pageSetup,
             header: document.header, footer: document.footer
         )
+    }
+
+    /// Colours source code by its syntax. The colours are only shown: the
+    /// text is read back from the model its attributes carry, not from how it looks.
+    private func highlightSyntax() {
+        guard let language = document.sourceLanguage else { return }
+        SyntaxHighlighter.apply(language, to: storage, scheme: scheme, plainColor: context.defaultTextColor)
     }
 
     /// Takes a document from the owner, rendering it if it is not the one

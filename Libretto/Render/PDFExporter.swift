@@ -9,6 +9,9 @@ enum PDFExporter {
         let rendered = DocumentRenderer.render(document.body, context: context)
 
         let storage = NSTextStorage(attributedString: rendered.string)
+        if let language = document.sourceLanguage {
+            SyntaxHighlighter.apply(language, to: storage, scheme: .light, plainColor: context.defaultTextColor)
+        }
         let layoutManager = PageLayoutManager(geometry: geometry)
         layoutManager.styles = document.styles
         let container = NSTextContainer()

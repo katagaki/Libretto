@@ -84,6 +84,7 @@ struct MobileLayout {
         var labeler = ListLabeler(context: context)
         var items: [MobileItem] = []
         var lastWasSpacer = true
+        let highlights = document.sourceLanguage.map { Self.highlights(document, language: $0, scheme: scheme) } ?? [:]
 
         for (index, block) in document.body.enumerated() {
             let id = "\(index)-\(block.id)"
@@ -98,10 +99,14 @@ struct MobileLayout {
                         lastWasSpacer = false
                     }
                 }
-                let built = builder.paragraph(paragraph, label: label)
+                var built = builder.paragraph(paragraph, label: label, highlights: highlights[index] ?? [])
+                // Code keeps its lines together, and every blank line between them.
+                if document.sourceLanguage != nil { built.spacingAfter = 0 }
                 if built.text.characters.allSatisfy(\.isWhitespace), built.label == nil {
                     // Empty paragraphs are how documents make space; one is enough.
-                    if !lastWasSpacer { items.append(MobileItem(id: id, content: .spacer)) }
+                    if !lastWasSpacer || document.sourceLanguage != nil {
+                        items.append(MobileItem(id: id, content: .spacer))
+                    }
                     lastWasSpacer = true
                 } else {
                     items.append(MobileItem(id: id, content: .paragraph(built)))
@@ -142,6 +147,45 @@ struct MobileLayout {
         }
         self.items = items
     }
+
+    /// Each paragraph's syntax colours, by block index, in UTF-16 offsets
+    /// into the paragraph's text. The whole text is read at once, since a
+    /// comment or string can run over many lines.
+    private static func highlights(
+        _ document: WordDocument, language: SourceLanguage, scheme: ColorScheme
+    ) -> [Int: [MobileHighlight]] {
+        var text = ""
+        var lines: [Range<Int>] = []
+        var offset = 0
+        for block in document.body {
+            let line = { if case .paragraph(let paragraph) = block { paragraph.plainText } else { "" } }()
+            let length = line.utf16.count
+            lines.append(offset..<(offset + length))
+            text += line + "\n"
+            offset += length + 1
+        }
+        var colors: [SyntaxKind: UIColor] = [:]
+        var result: [Int: [MobileHighlight]] = [:]
+        let tokens = SyntaxHighlighter.tokens(in: text, language: language)
+        for (index, line) in lines.enumerated() {
+            let (start, end) = (line.lowerBound, line.upperBound)
+            for token in tokens where token.range.location < end && NSMaxRange(token.range) > start {
+                let color = colors[token.kind] ?? SyntaxHighlighter.color(for: token.kind, scheme: scheme)
+                colors[token.kind] = color
+                let lower = max(token.range.location, start) - start
+                let upper = min(NSMaxRange(token.range), end) - start
+                result[index, default: []].append(MobileHighlight(range: lower..<upper, color: color))
+            }
+        }
+        return result
+    }
+}
+
+/// A syntax colour over part of a paragraph's text.
+struct MobileHighlight {
+    /// UTF-16 offsets into the paragraph's plain text.
+    var range: Range<Int>
+    var color: UIColor
 }
 
 /// Builds reader text from paragraphs, at reader sizes.
@@ -156,10 +200,10 @@ struct MobileTextBuilder {
         return target / max(size, 1)
     }
 
-    func paragraph(_ paragraph: Paragraph, label: ListLabelBox?) -> MobileParagraph {
+    func paragraph(_ paragraph: Paragraph, label: ListLabelBox?, highlights: [MobileHighlight] = []) -> MobileParagraph {
         let resolved = context.styles.resolvedParagraphProperties(paragraph.properties)
         let indents = Typography.indents(direct: paragraph.properties, resolved: resolved, context: context)
-        let text = attributed(paragraph)
+        let text = attributed(paragraph, highlights: highlights)
         var labelText: AttributedString?
         if let label, !label.text.isEmpty {
             let first = paragraph.inlines.first { if case .text = $0.content { return true } else { return false } }
@@ -193,11 +237,22 @@ struct MobileTextBuilder {
         return result
     }
 
-    private func attributed(_ paragraph: Paragraph) -> AttributedString {
+    private func attributed(_ paragraph: Paragraph, highlights: [MobileHighlight] = []) -> AttributedString {
         var result = AttributedString()
+        // Where in the paragraph's plain text the inline starts, for its syntax colours.
+        var position = 0
         for inline in paragraph.inlines {
+            let start = position
+            position += inline.plainText.utf16.count
             let string: String
             switch inline.content {
+            case .text(let text) where !highlights.isEmpty:
+                for (part, color) in Self.split(text, from: start, by: highlights) {
+                    var piece = runText(part, format: inline.format, paragraph: paragraph)
+                    if let color { piece.foregroundColor = Color(uiColor: color) }
+                    result += piece
+                }
+                continue
             case .text(let text): string = text
             case .tab: string = "  "
             case .lineBreak: string = "\n"
@@ -210,6 +265,29 @@ struct MobileTextBuilder {
             if let url = inline.hyperlink?.url { piece.link = url }
             result += piece
         }
+        return result
+    }
+
+    /// `text`, starting at `start` in its paragraph, cut where its colours change.
+    private static func split(
+        _ text: String, from start: Int, by highlights: [MobileHighlight]
+    ) -> [(String, UIColor?)] {
+        let units = Array(text.utf16)
+        var result: [(String, UIColor?)] = []
+        var cursor = 0
+        func add(_ range: Range<Int>, _ color: UIColor?) {
+            guard !range.isEmpty else { return }
+            result.append((String(decoding: units[range], as: UTF16.self), color))
+        }
+        for highlight in highlights {
+            let lower = max(highlight.range.lowerBound - start, cursor)
+            let upper = min(highlight.range.upperBound - start, units.count)
+            guard lower < upper else { continue }
+            add(cursor..<lower, nil)
+            add(lower..<upper, highlight.color)
+            cursor = upper
+        }
+        add(cursor..<units.count, nil)
         return result
     }
 
