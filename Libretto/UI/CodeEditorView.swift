@@ -176,10 +176,19 @@ final class CodeEditorContainer: UIView {
     /// Points, from the text's leading edge to the end of its widest line.
     private var widestLine: CGFloat = 0
 
-    let font: UIFont = UIFontMetrics(forTextStyle: .body).scaledFont(
-        for: .monospacedSystemFont(ofSize: 14, weight: .regular)
-    )
-    private var characterWidth: CGFloat { (" " as NSString).size(withAttributes: [.font: font]).width }
+    /// The text's size before Dynamic Type scales it, which pinching and
+    /// ⌘+ and ⌘− change, and which is kept for the next file opened.
+    private(set) var pointSize = CodeEditorContainer.storedPointSize
+    static let defaultPointSize: CGFloat = 14
+    static let pointSizes: ClosedRange<CGFloat> = 8...32
+    private static let pointSizeKey = "CodeEditor.PointSize"
+    /// How much a pinch's scale is softened: fingers spread twice as far
+    /// apart make the text about 1.4 times the size.
+    private static let pinchDamping: CGFloat = 0.5
+    private var pinchStartSize: CGFloat = 0
+
+    private(set) var font = UIFont.monospacedSystemFont(ofSize: CodeEditorContainer.defaultPointSize, weight: .regular)
+    private var characterWidth: CGFloat = 0
 
     /// How the text is set: tabs four characters wide, as most editors have them.
     var textAttributes: [NSAttributedString.Key: Any] {
@@ -201,19 +210,20 @@ final class CodeEditorContainer: UIView {
         super.init(frame: frame)
 
         backgroundColor = .systemBackground
-        textView.typingAttributes = textAttributes
+        textView.container = self
         sideways.showsVerticalScrollIndicator = false
         sideways.alwaysBounceHorizontal = false
         sideways.isDirectionalLockEnabled = true
         sideways.contentInsetAdjustmentBehavior = .never
         sideways.addSubview(textView)
         gutter.textView = textView
-        gutter.textFont = font
-        gutter.font = UIFontMetrics(forTextStyle: .body).scaledFont(
-            for: .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        )
         addSubview(sideways)
         addSubview(gutter)
+        addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinch)))
+        applyFont()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
+            self.applyFont()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -233,6 +243,113 @@ final class CodeEditorContainer: UIView {
         textView.frame = CGRect(x: 0, y: 0, width: width, height: bounds.height)
         sideways.contentSize = CGSize(width: width, height: bounds.height)
     }
+
+    // MARK: Text size
+
+    private static var storedPointSize: CGFloat {
+        let stored = UserDefaults.standard.double(forKey: pointSizeKey)
+        return stored > 0 ? min(max(stored, pointSizes.lowerBound), pointSizes.upperBound) : defaultPointSize
+    }
+
+    @objc private func pinch(_ gesture: UIPinchGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            pinchStartSize = pointSize
+            // Two fingers would otherwise scroll too, fighting the text held under them.
+            setScrollingEnabled(false)
+        case .changed:
+            setPointSize(pinchStartSize * pow(gesture.scale, Self.pinchDamping), keeping: gesture.location(in: self))
+        case .ended, .cancelled, .failed:
+            setScrollingEnabled(true)
+            storePointSize()
+        default:
+            break
+        }
+    }
+
+    private func setScrollingEnabled(_ isEnabled: Bool) {
+        textView.panGestureRecognizer.isEnabled = isEnabled
+        sideways.panGestureRecognizer.isEnabled = isEnabled
+    }
+
+    func adjustPointSize(by step: CGFloat) {
+        setPointSize(pointSize + step, keeping: nil)
+        storePointSize()
+    }
+
+    func resetPointSize() {
+        setPointSize(Self.defaultPointSize, keeping: nil)
+        storePointSize()
+    }
+
+    private func storePointSize() {
+        UserDefaults.standard.set(Double(pointSize), forKey: Self.pointSizeKey)
+    }
+
+    /// Sets the text at `size`, keeping the text under `anchor`, a point in
+    /// this view, where it was on screen.
+    private func setPointSize(_ size: CGFloat, keeping anchor: CGPoint?) {
+        // Quarter points: smooth to the eye, without laying out again for every hair of movement.
+        let size = (min(max(size, Self.pointSizes.lowerBound), Self.pointSizes.upperBound) * 4).rounded() / 4
+        guard size != pointSize else { return }
+        let layoutManager = textView.layoutManager
+        let container = textView.textContainer
+        let inset = textView.textContainerInset
+
+        // What is under the anchor, and where in it.
+        var anchored: (index: Int, rect: CGRect, point: CGPoint)?
+        if let anchor, layoutManager.numberOfGlyphs > 0 {
+            let inText = convert(anchor, to: textView)
+            let point = CGPoint(x: inText.x - inset.left, y: inText.y - inset.top)
+            let glyph = layoutManager.glyphIndex(for: point, in: container)
+            let rect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+            anchored = (layoutManager.characterIndexForGlyph(at: glyph), rect, point)
+        }
+
+        pointSize = size
+        applyFont()
+
+        guard let anchor, let anchored else { return }
+        let glyph = layoutManager.glyphIndexForCharacter(at: anchored.index)
+        let rect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+        let scale = anchored.rect.height > 0 ? rect.height / anchored.rect.height : 1
+        let point = CGPoint(
+            x: rect.minX + (anchored.point.x - anchored.rect.minX) * scale,
+            y: rect.minY + (anchored.point.y - anchored.rect.minY) * scale
+        )
+        let top = -textView.adjustedContentInset.top
+        let bottom = max(top, textView.contentSize.height + textView.adjustedContentInset.bottom - textView.bounds.height)
+        textView.contentOffset.y = min(max(point.y + inset.top - anchor.y, top), bottom)
+        let right = max(0, sideways.contentSize.width - sideways.bounds.width)
+        sideways.contentOffset.x = min(max(point.x + inset.left - (anchor.x - sideways.frame.minX), 0), right)
+    }
+
+    /// Sets the text, the line numbers and everything measured from them at the current size.
+    private func applyFont() {
+        let metrics = UIFontMetrics(forTextStyle: .body)
+        font = metrics.scaledFont(for: .monospacedSystemFont(ofSize: pointSize, weight: .regular), compatibleWith: traitCollection)
+        characterWidth = (" " as NSString).size(withAttributes: [.font: font]).width
+        gutter.textFont = font
+        gutter.font = metrics.scaledFont(
+            for: .monospacedDigitSystemFont(ofSize: pointSize * 6 / 7, weight: .regular), compatibleWith: traitCollection
+        )
+        let attributes = textAttributes
+        let storage = textView.textStorage
+        storage.beginEditing()
+        // Font and spacing only, so the syntax colours stay.
+        storage.addAttributes(
+            [.font: font, .paragraphStyle: attributes[.paragraphStyle] as Any],
+            range: NSRange(location: 0, length: storage.length)
+        )
+        storage.endEditing()
+        textView.typingAttributes = attributes
+        widestLine = measureWidestLine()
+        setNeedsLayout()
+        layoutIfNeeded()
+        gutter.setNeedsDisplay()
+    }
+
+    // MARK: Changes
 
     func textDidChange() {
         let gutterWidth = gutter.preferredWidth
@@ -295,6 +412,8 @@ final class CodeEditorContainer: UIView {
 
 /// The editor's text view: plain text only, with none of the help meant for prose.
 final class CodeTextView: UITextView {
+    weak var container: CodeEditorContainer?
+
     /// Undo is the document's history's, which takes typing as it is handed over.
     private let disabledUndoManager: UndoManager = {
         let manager = UndoManager()
@@ -303,6 +422,22 @@ final class CodeTextView: UITextView {
     }()
 
     override var undoManager: UndoManager? { disabledUndoManager }
+
+    override var keyCommands: [UIKeyCommand]? {
+        [
+            UIKeyCommand(input: "+", modifierFlags: .command, action: #selector(biggerCommand)),
+            UIKeyCommand(input: "=", modifierFlags: .command, action: #selector(biggerCommand)),
+            UIKeyCommand(input: "-", modifierFlags: .command, action: #selector(smallerCommand)),
+            UIKeyCommand(input: "0", modifierFlags: .command, action: #selector(actualSizeCommand)),
+        ].map { command in
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+    }
+
+    @objc private func biggerCommand() { container?.adjustPointSize(by: 1) }
+    @objc private func smallerCommand() { container?.adjustPointSize(by: -1) }
+    @objc private func actualSizeCommand() { container?.resetPointSize() }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)

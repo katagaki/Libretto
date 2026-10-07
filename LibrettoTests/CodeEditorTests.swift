@@ -59,4 +59,32 @@ struct CodeEditorTests {
         let keyword = controller.view.textView.textStorage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
         #expect(keyword == SyntaxHighlighter.color(for: .keyword, scheme: .light))
     }
+
+    @Test("⌘+ and ⌘− resize the text within bounds, keep its colours, and are remembered")
+    func zoom() throws {
+        let key = "CodeEditor.PointSize"
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(saved, forKey: key) }
+        UserDefaults.standard.removeObject(forKey: key)
+
+        let (controller, _) = makeEditor("let a = 1")
+        let view = controller.view
+        let textView = view.textView
+        #expect(view.pointSize == CodeEditorContainer.defaultPointSize)
+        let gutterWidth = view.gutter.frame.width
+
+        view.adjustPointSize(by: 4)
+        #expect(view.pointSize == 18)
+        let font = try #require(textView.textStorage.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
+        #expect(font.pointSize > 17)
+        #expect(view.gutter.frame.width > gutterWidth)
+        let keyword = textView.textStorage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
+        #expect(keyword == SyntaxHighlighter.color(for: .keyword, scheme: .light))
+        #expect(UserDefaults.standard.double(forKey: key) == 18)
+
+        view.adjustPointSize(by: 100)
+        #expect(view.pointSize == CodeEditorContainer.pointSizes.upperBound)
+        view.resetPointSize()
+        #expect(view.pointSize == CodeEditorContainer.defaultPointSize)
+    }
 }
