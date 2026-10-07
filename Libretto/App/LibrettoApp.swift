@@ -7,7 +7,7 @@ struct LibrettoApp: App {
             DocumentView(document: configuration.$document, fileName: configuration.fileURL?.lastPathComponent)
         }
 
-        DocumentGroupLaunchScene("Launch.Title") {
+        DocumentGroupLaunchScene(Text(verbatim: "")) {
             NewDocumentButton("Launch.NewDocument")
         } background: {
             LaunchBackground()

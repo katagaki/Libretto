@@ -40,7 +40,6 @@ S = {
  "Highlight.lightGray": ["Grey highlight", "灰色の蛍光ペン", "회색 형광펜", "灰色突出显示", "灰色螢光筆"],
  "Highlight.darkYellow": ["Dark yellow highlight", "濃い黄色の蛍光ペン", "진한 노란색 형광펜", "深黄色突出显示", "深黃色螢光筆"],
  "Launch.NewDocument": ["Create Document", "書類を作成", "문서 만들기", "创建文稿", "建立文件"],
- "Launch.Title": ["Libretto", "Libretto", "Libretto", "Libretto", "Libretto"],
  "Insert.PageBreak": ["Page Break", "改ページ", "페이지 나누기", "分页符", "分頁符號"],
  "Insert.Picture": ["Picture…", "画像…", "사진…", "图片…", "圖片…"],
  "Insert.Table": ["Table…", "表…", "표…", "表格…", "表格…"],
