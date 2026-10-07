@@ -86,19 +86,11 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     }
 
     private func relayout() {
-        highlightSyntax()
         pageCount = layoutManager.layOutPages(in: container, startingWith: pageCount)
         view.update(
             geometry: geometry, pages: pageCount, setup: document.pageSetup,
             header: document.header, footer: document.footer
         )
-    }
-
-    /// Colours source code by its syntax. The colours are only shown: the
-    /// text is read back from the model its attributes carry, not from how it looks.
-    private func highlightSyntax() {
-        guard let language = document.sourceLanguage else { return }
-        SyntaxHighlighter.apply(language, to: storage, scheme: scheme, plainColor: context.defaultTextColor)
     }
 
     /// Takes a document from the owner, rendering it if it is not the one
@@ -333,8 +325,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             return RunBox(before.format, hyperlink: after?.hyperlink == before.hyperlink ? before.hyperlink : nil)
         }
         if let at = box(at: location) { return RunBox(at.format, hyperlink: nil) }
-        // Code is typed in the code font, even on a line with nothing to take it from.
-        return RunBox(document.sourceLanguage == nil ? RunFormat() : PlainText.codeFormat, hyperlink: nil)
+        return RunBox(RunFormat(), hyperlink: nil)
     }
 
     private func typingAttributes(at location: Int) -> [NSAttributedString.Key: Any] {
