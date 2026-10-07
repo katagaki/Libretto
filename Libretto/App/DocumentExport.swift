@@ -19,12 +19,22 @@ struct DocumentExport: Transferable, Sendable {
         .suggestedFileName { $0.name + ".docm" }
         .exportingCondition { $0.document.hasMacros }
 
+        // Source code goes as the file it is, never as a Word document.
+        FileRepresentation(exportedContentType: .plainText) { export in
+            SentTransferredFile(try export.write(extension: export.sourceExtension ?? "txt") {
+                PlainText.data(from: export.document)
+            })
+        }
+        .suggestedFileName { $0.name + "." + ($0.sourceExtension ?? "txt") }
+        .exportingCondition { $0.sourceExtension != nil }
+
         FileRepresentation(exportedContentType: .openXMLDocument) { export in
             SentTransferredFile(try export.write(extension: "docx") {
                 try DOCXWriter.data(from: export.document.withoutMacros)
             })
         }
         .suggestedFileName { $0.name + ".docx" }
+        .exportingCondition { $0.sourceExtension == nil }
 
         FileRepresentation(exportedContentType: .pdf) { export in
             let document = export.document
@@ -32,6 +42,11 @@ struct DocumentExport: Transferable, Sendable {
             return SentTransferredFile(try export.write(extension: "pdf") { data })
         }
         .suggestedFileName { $0.name + ".pdf" }
+    }
+
+    /// The extension source code is shared with, or `nil` for anything that is not code.
+    private var sourceExtension: String? {
+        document.sourceLanguage?.fileExtensions.first
     }
 
     private func write(
