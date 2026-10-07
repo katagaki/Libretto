@@ -175,6 +175,8 @@ final class CodeEditorContainer: UIView {
     private let sideways = UIScrollView()
     /// Points, from the text's leading edge to the end of its widest line.
     private var widestLine: CGFloat = 0
+    /// The editor runs under the keyboard; its text scrolls clear of it.
+    private lazy var keyboard = KeyboardOverlap(view: self)
 
     /// The text's size before Dynamic Type scales it, which pinching and
     /// ⌘+ and ⌘− change, and which is kept for the next file opened.
@@ -242,6 +244,12 @@ final class CodeEditorContainer: UIView {
         let width = max(sideways.bounds.width, needed)
         textView.frame = CGRect(x: 0, y: 0, width: width, height: bounds.height)
         sideways.contentSize = CGSize(width: width, height: bounds.height)
+        let keyboardInset = keyboard.contentInset(for: textView)
+        if textView.contentInset.bottom != keyboardInset {
+            textView.contentInset.bottom = keyboardInset
+            textView.verticalScrollIndicatorInsets.bottom = keyboardInset
+        }
+        sideways.horizontalScrollIndicatorInsets.bottom = keyboard.height
     }
 
     // MARK: Text size

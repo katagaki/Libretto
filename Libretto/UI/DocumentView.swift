@@ -108,7 +108,7 @@ struct DocumentView: View {
     private var content: some View {
         if let language = document.document.sourceLanguage {
             CodeEditorView(document: wordDocument, language: language, state: state)
-                .ignoresSafeArea(.container, edges: .bottom)
+                .ignoresSafeArea(edges: .bottom)
         } else {
             pagesOrReader
         }
@@ -119,7 +119,7 @@ struct DocumentView: View {
         switch state.viewMode {
         case .page:
             PageView(document: wordDocument, state: state)
-                .ignoresSafeArea(.container, edges: .bottom)
+                .ignoresSafeArea(edges: .bottom)
         case .mobile:
             MobileReaderView(document: document.document)
         }

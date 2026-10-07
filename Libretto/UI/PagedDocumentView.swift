@@ -21,6 +21,8 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
     /// Until the user pinches, the pages are kept fitted to the width.
     private var fitsWidth = true
     private var lastWidth: CGFloat = 0
+    /// The pages run under the keyboard; they scroll clear of it.
+    private lazy var keyboard = KeyboardOverlap(view: self)
 
     init(textView: UITextView) {
         self.textView = textView
@@ -133,6 +135,11 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
             updateZoomLimits()
         }
         centerContent()
+        let keyboardInset = keyboard.contentInset(for: scrollView)
+        if scrollView.contentInset.bottom != keyboardInset {
+            scrollView.contentInset.bottom = keyboardInset
+            scrollView.verticalScrollIndicatorInsets.bottom = keyboardInset
+        }
     }
 
     // MARK: - Scrolling
@@ -151,7 +158,18 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
     func scrollToVisible(_ rect: CGRect) {
         guard rect.origin.x.isFinite, rect.origin.y.isFinite else { return }
         let target = textView.convert(rect, to: scrollView).insetBy(dx: -8, dy: -32)
-        scrollView.scrollRectToVisible(target, animated: false)
+        // Measured against what the insets leave showing, the keyboard's among them.
+        let insets = scrollView.adjustedContentInset
+        let visible = scrollView.bounds.inset(by: insets)
+        var offset = scrollView.contentOffset
+        if target.maxX > visible.maxX { offset.x += target.maxX - visible.maxX }
+        if target.minX < visible.minX { offset.x -= visible.minX - target.minX }
+        if target.maxY > visible.maxY { offset.y += target.maxY - visible.maxY }
+        if target.minY < visible.minY { offset.y -= visible.minY - target.minY }
+        let size = scrollView.contentSize
+        offset.x = min(max(offset.x, -insets.left), max(-insets.left, size.width + insets.right - scrollView.bounds.width))
+        offset.y = min(max(offset.y, -insets.top), max(-insets.top, size.height + insets.bottom - scrollView.bounds.height))
+        scrollView.contentOffset = offset
     }
 
     /// A tap in a page's margin puts the caret on the nearest text.
