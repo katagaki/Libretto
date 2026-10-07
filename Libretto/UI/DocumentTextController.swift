@@ -854,6 +854,17 @@ final class DocumentTextView: UITextView {
 
     @objc private func boldCommand() { controller?.toggleBold() }
     @objc private func italicCommand() { controller?.toggleItalic() }
+    // The floating bar gives way to the find bar while it is open.
+    override func findInteraction(_ interaction: UIFindInteraction, didBegin session: UIFindSession) {
+        super.findInteraction(interaction, didBegin: session)
+        controller?.state?.isFinding = true
+    }
+
+    override func findInteraction(_ interaction: UIFindInteraction, didEnd session: UIFindSession) {
+        super.findInteraction(interaction, didEnd: session)
+        controller?.state?.isFinding = false
+    }
+
     @objc private func underlineCommand() { controller?.toggleUnderline() }
     @objc private func linkCommand() { controller?.state?.presentedPanel = .link }
 }

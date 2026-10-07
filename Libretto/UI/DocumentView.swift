@@ -25,8 +25,11 @@ struct DocumentView: View {
             // Code is edited as text: there is nothing to format.
             if !isCode {
                 if state.viewMode == .page {
-                    FloatingActionBar(state: state, namespace: panelTransition)
-                        .padding(.bottom, 8)
+                    if !state.isFinding {
+                        FloatingActionBar(state: state, namespace: panelTransition)
+                            .padding(.bottom, 8)
+                            .transition(.opacity)
+                    }
                 } else {
                     editButton
                 }

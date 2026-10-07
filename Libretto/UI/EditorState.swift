@@ -125,6 +125,8 @@ final class EditorState {
     /// Find was asked for from the reader, which has no find bar: the page
     /// view opens one once it is on screen.
     @ObservationIgnored var wantsFind = false
+    /// Whether the find bar is open, which the floating bar keeps out of the way of.
+    var isFinding = false
     /// The page view zooms out to fit; this is how far, for the zoom readout.
     var zoom: CGFloat = 1
 
