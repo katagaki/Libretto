@@ -117,4 +117,6 @@ final class EditorState {
 
     /// The page view's editor, while it is on screen.
     @ObservationIgnored weak var controller: DocumentTextController?
+    /// The code editor, while a source file is open.
+    @ObservationIgnored weak var codeEditor: CodeEditorController?
 }

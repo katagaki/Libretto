@@ -22,11 +22,14 @@ struct DocumentView: View {
         // indicator, but the bar must stay clear of it, where taps go to the system.
         ZStack(alignment: .bottom) {
             content
-            if state.viewMode == .page {
-                FloatingActionBar(state: state, namespace: panelTransition)
-                    .padding(.bottom, 8)
-            } else {
-                editButton
+            // Code is edited as text: there is nothing to format.
+            if !isCode {
+                if state.viewMode == .page {
+                    FloatingActionBar(state: state, namespace: panelTransition)
+                        .padding(.bottom, 8)
+                } else {
+                    editButton
+                }
             }
         }
             .background(Color(uiColor: .secondarySystemBackground))
@@ -98,8 +101,21 @@ struct DocumentView: View {
             }
     }
 
+    /// Whether the document is source code, which opens in the code editor.
+    private var isCode: Bool { document.document.sourceLanguage != nil }
+
     @ViewBuilder
     private var content: some View {
+        if let language = document.document.sourceLanguage {
+            CodeEditorView(document: wordDocument, language: language, state: state)
+                .ignoresSafeArea(.container, edges: .bottom)
+        } else {
+            pagesOrReader
+        }
+    }
+
+    @ViewBuilder
+    private var pagesOrReader: some View {
         switch state.viewMode {
         case .page:
             PageView(document: wordDocument, state: state)
@@ -168,6 +184,7 @@ struct DocumentView: View {
         ToolbarItemGroup(placement: .primaryAction) {
             Button("Toolbar.Undo", systemImage: "arrow.uturn.backward") {
                 state.controller?.flush()
+                state.codeEditor?.flush()
                 history.undo()
             }
             .disabled(!history.canUndo)
@@ -196,15 +213,17 @@ struct DocumentView: View {
                     .accessibilityIdentifier("unsupportedFeatures")
                 }
             }
-            Section {
-                Picker(selection: Binding(get: { state.viewMode }, set: { setMode($0) })) {
-                    ForEach(ViewMode.allCases) { mode in
-                        Label(mode.label, systemImage: mode.symbolName).tag(mode)
+            if !isCode {
+                Section {
+                    Picker(selection: Binding(get: { state.viewMode }, set: { setMode($0) })) {
+                        ForEach(ViewMode.allCases) { mode in
+                            Label(mode.label, systemImage: mode.symbolName).tag(mode)
+                        }
+                    } label: {
+                        Label("Toolbar.ViewMode", systemImage: state.viewMode.symbolName)
                     }
-                } label: {
-                    Label("Toolbar.ViewMode", systemImage: state.viewMode.symbolName)
+                    .accessibilityIdentifier("viewMode")
                 }
-                .accessibilityIdentifier("viewMode")
             }
             Section {
                 Link(destination: URL(string: "https://github.com/katagaki/Libretto")!) {

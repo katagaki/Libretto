@@ -30,20 +30,30 @@ enum PlainText {
 
     /// A document of the file's lines, all in `format`.
     static func document(from data: Data, format: RunFormat = RunFormat()) -> WordDocument {
-        var lines = string(from: data).components(separatedBy: "\n")
+        var text = string(from: data)
         // The newline ending the last line does not start another.
-        if lines.count > 1, lines.last == "" { lines.removeLast() }
+        if text.hasSuffix("\n") { text.removeLast() }
         var document = WordDocument()
-        document.body = lines.map { line in
-            // Lines follow one another as closely as they do in the file.
-            .paragraph(Paragraph(inlines: inlines(line, format: format), properties: ParagraphProperties(spacingAfter: 0)))
-        }
+        document.body = body(from: text, format: format)
         return document
     }
 
     static func data(from document: WordDocument) -> Data {
-        let text = document.body.flatMap(lines(of:)).joined(separator: "\n")
+        let text = text(of: document)
         return Data((text.isEmpty ? "" : text + "\n").utf8)
+    }
+
+    /// The document's text, its paragraphs as lines.
+    static func text(of document: WordDocument) -> String {
+        document.body.flatMap(lines(of:)).joined(separator: "\n")
+    }
+
+    /// A paragraph for each of the text's lines, all in `format`.
+    static func body(from text: String, format: RunFormat = RunFormat()) -> [Block] {
+        text.components(separatedBy: "\n").map { line in
+            // Lines follow one another as closely as they do in the file.
+            .paragraph(Paragraph(inlines: inlines(line, format: format), properties: ParagraphProperties(spacingAfter: 0)))
+        }
     }
 
     private static func lines(of block: Block) -> [String] {
