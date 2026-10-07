@@ -8,6 +8,7 @@ enum EditorPanel: String, Identifiable, Hashable {
     case table
     case insertTable
     case link
+    case headerFooter
 
     var id: String { rawValue }
 
@@ -19,6 +20,7 @@ enum EditorPanel: String, Identifiable, Hashable {
         case .table: return String(localized: "Panel.Table.Title")
         case .insertTable: return String(localized: "Panel.InsertTable.Title")
         case .link: return String(localized: "Panel.Link.Title")
+        case .headerFooter: return String(localized: "Panel.HeaderFooter.Title")
         }
     }
 }
@@ -56,10 +58,11 @@ enum EditScope: Equatable {
     case insertion
     case table
     case pageSetup
+    case headerFooter
     case other
 
-    /// Typing, and editing a table's text, arrive a keystroke at a time.
-    var coalesces: Bool { self == .typing || self == .table }
+    /// Typing, and editing a table's text or a header, arrive a keystroke at a time.
+    var coalesces: Bool { self == .typing || self == .table || self == .headerFooter }
 
     var actionName: String {
         switch self {
@@ -70,6 +73,7 @@ enum EditScope: Equatable {
         case .insertion: return String(localized: "Undo.Insertion")
         case .table: return String(localized: "Undo.Table")
         case .pageSetup: return String(localized: "Undo.PageSetup")
+        case .headerFooter: return String(localized: "Undo.HeaderFooter")
         case .other: return String(localized: "Undo.Edit")
         }
     }

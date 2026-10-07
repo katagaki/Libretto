@@ -56,19 +56,23 @@ enum DOCXReader {
         if parts.keys.contains(where: { $0.lowercased().hasSuffix("vbaproject.bin") }) { report.insert(.macros) }
         if parts.keys.contains(where: { $0.hasSuffix("comments.xml") }) { report.insert(.comments) }
 
-        func headerFooter(_ name: String) -> HeaderFooterText? {
-            guard let section = finalSection else { return nil }
-            let references = section.children(named: name + "Reference")
-            let reference = references.first { $0.attribute("type") == "default" } ?? references.first
-            guard let id = reference?.attribute("id"), let relationship = relationships[id],
+        // Every header and footer a section refers to, by relationship.
+        var headerFooters: [String: HeaderFooterText] = [:]
+        for (id, isFooter) in pageSetup.headerFooters.headers.values.map({ ($0, false) })
+            + pageSetup.headerFooters.footers.values.map({ ($0, true) }) where headerFooters[id] == nil {
+            guard let relationship = relationships[id],
                   let data = parts[DOCXPaths.resolve(relationship.target, relativeTo: documentPath)],
-                  let xml = try? XMLLite.parse(data) else { return nil }
-            return HeaderFooterReader.text(from: xml)
+                  let xml = try? XMLLite.parse(data) else { continue }
+            var text = HeaderFooterReader.text(from: xml)
+            text.isFooter = isFooter
+            headerFooters[id] = text
         }
+        let settings = part(ofType: OOXML.settingsType).flatMap { try? XMLLite.parse($0) }
+        let evenAndOdd = PropertyReader.isOn(settings?.firstChild(named: "evenAndOddHeaders")) ?? false
 
         var document = WordDocument(
             body: blocks, pageSetup: pageSetup, styles: styles, numbering: numbering,
-            header: headerFooter("header"), footer: headerFooter("footer"),
+            headerFooters: headerFooters,
             package: DocumentPackage(
                 parts: parts, documentPath: documentPath, relationships: relationships,
                 rootAttributesXML: root.qualifiedAttributes.sorted { $0.key < $1.key }
@@ -78,6 +82,8 @@ enum DOCXReader {
             unsupportedFeatures: report
         )
         document.trailingXML = trailing
+        document.evenAndOddHeaders = evenAndOdd
+        document.originalEvenAndOddHeaders = evenAndOdd
         return document
     }
 
@@ -610,20 +616,50 @@ enum PageSetupReader {
         setup.marginRight = value(margins, "right") ?? value(margins, "end") ?? setup.marginRight
         setup.headerDistance = value(margins, "header") ?? setup.headerDistance
         setup.footerDistance = value(margins, "footer") ?? setup.footerDistance
+        for reference in sectPr.children where reference.name == "headerReference" || reference.name == "footerReference" {
+            guard let id = reference.attribute("id") else { continue }
+            let kind = reference.attribute("type").flatMap(HeaderFooterKind.init(rawValue:)) ?? .default
+            if reference.name == "headerReference" {
+                setup.headerFooters.headers[kind] = id
+            } else {
+                setup.headerFooters.footers[kind] = id
+            }
+        }
+        setup.headerFooters.titlePage = PropertyReader.isOn(sectPr.firstChild(named: "titlePg")) ?? false
+        setup.originalHeaderFooters = setup.headerFooters
         return setup
     }
 }
 
 enum HeaderFooterReader {
     /// A header or footer part's text, with page number fields as placeholders.
-    static func text(from root: XMLElement) -> HeaderFooterText? {
+    static func text(from root: XMLElement) -> HeaderFooterText {
         let paragraphs = root.children.filter { $0.name == "p" || $0.name == "sdt" || $0.name == "tbl" }
         let lines = paragraphs.map { fieldAwareText(of: $0) }.filter { !$0.trimmed.isEmpty }
-        guard !lines.isEmpty else { return nil }
         let alignment = paragraphs.lazy.compactMap {
             $0.firstDescendant(atPath: "pPr/jc")?.attribute("val").flatMap(ParagraphAlignment.init(ooxml:))
         }.first ?? .leading
-        return HeaderFooterText(text: lines.joined(separator: "\n"), alignment: alignment)
+        var text = HeaderFooterText(text: lines.joined(separator: "\n"), alignment: alignment)
+        let namespaces = root.namespaceDeclarations
+        let first = root.children.first { $0.name == "p" }
+        text.paragraphPropertiesXML = first?.firstChild(named: "pPr")
+            .flatMap { XMLLite.serialize($0, inheritedNamespaces: namespaces) }
+        text.runPropertiesXML = first.flatMap { firstTextRun(in: $0) }?.firstChild(named: "rPr")
+            .flatMap { XMLLite.serialize($0, inheritedNamespaces: namespaces) }
+        text.hasRichContent = paragraphs.contains { $0.name != "p" } || paragraphs.contains { containsDrawing($0) }
+        return text
+    }
+
+    private static func firstTextRun(in element: XMLElement) -> XMLElement? {
+        for child in element.children {
+            if child.name == "r", child.firstChild(named: "t") != nil { return child }
+            if child.name != "pPr", let found = firstTextRun(in: child) { return found }
+        }
+        return nil
+    }
+
+    private static func containsDrawing(_ element: XMLElement) -> Bool {
+        element.children.contains { ["drawing", "pict", "object", "AlternateContent"].contains($0.name) || containsDrawing($0) }
     }
 
     /// Text with `PAGE` and `NUMPAGES` fields replaced by placeholders, since

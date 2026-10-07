@@ -14,9 +14,13 @@ struct WordDocument: Equatable, Sendable {
     /// styles but does not edit their definitions.
     var styles: StyleSheet
     var numbering: NumberingDefinitions
-    /// Plain text of the default header and footer, drawn in the page margins.
-    var header: HeaderFooterText?
-    var footer: HeaderFooterText?
+    /// The header and footer parts, by the relationship ID sections refer to
+    /// them by, reduced to their text and drawn in the page margins.
+    var headerFooters: [String: HeaderFooterText] = [:]
+    /// Whether even pages have headers and footers of their own, from the
+    /// settings part, and whether they did when the file was read.
+    var evenAndOddHeaders = false
+    var originalEvenAndOddHeaders = false
     /// Body-level elements after the last block, before the section properties.
     var trailingXML: [String] = []
     /// The original package, part by part, for writing back what is not modelled.
@@ -31,15 +35,14 @@ struct WordDocument: Equatable, Sendable {
 
     init(
         body: [Block], pageSetup: PageSetup, styles: StyleSheet, numbering: NumberingDefinitions,
-        header: HeaderFooterText? = nil, footer: HeaderFooterText? = nil,
+        headerFooters: [String: HeaderFooterText] = [:],
         package: DocumentPackage, unsupportedFeatures: UnsupportedFeatureReport = UnsupportedFeatureReport()
     ) {
         self.body = body
         self.pageSetup = pageSetup
         self.styles = styles
         self.numbering = numbering
-        self.header = header
-        self.footer = footer
+        self.headerFooters = headerFooters
         self.package = package
         self.unsupportedFeatures = unsupportedFeatures
     }
@@ -65,6 +68,31 @@ struct WordDocument: Equatable, Sendable {
             ) { _, _, _, _ in count += 1 }
             return total + count
         }
+    }
+
+    /// The default header and footer of the last section.
+    var header: HeaderFooterText? { headerFooter(.default, isFooter: false, in: pageSetup) }
+    var footer: HeaderFooterText? { headerFooter(.default, isFooter: true, in: pageSetup) }
+
+    func headerFooter(_ kind: HeaderFooterKind, isFooter: Bool, in setup: PageSetup) -> HeaderFooterText? {
+        let references = isFooter ? setup.headerFooters.footers : setup.headerFooters.headers
+        return references[kind].flatMap { headerFooters[$0] }
+    }
+
+    /// Which header or footer a page shows: the first page's, if the section
+    /// has one of its own, an even page's, if the document does, or the default.
+    func headerFooterKind(forPage index: Int, in setup: PageSetup) -> HeaderFooterKind {
+        if index == 0, setup.headerFooters.titlePage { return .first }
+        if evenAndOddHeaders, index % 2 == 1 { return .even }
+        return .default
+    }
+
+    /// A relationship ID for a new header or footer part.
+    func unusedHeaderFooterID(isFooter: Bool) -> String {
+        let stem = isFooter ? "rIdLibrettoFooter" : "rIdLibrettoHeader"
+        var index = 1
+        while headerFooters["\(stem)\(index)"] != nil || package.relationships["\(stem)\(index)"] != nil { index += 1 }
+        return "\(stem)\(index)"
     }
 
     func block(withID id: Block.ID) -> Block? {
@@ -481,6 +509,9 @@ struct PageSetup: Equatable, Sendable {
     var marginRight = 1440
     var headerDistance = 708
     var footerDistance = 708
+    /// Which header and footer parts the section shows, and whether its first page has its own.
+    var headerFooters = HeaderFooterReferences()
+    var originalHeaderFooters: HeaderFooterReferences?
     var preservedXML: String?
     var original: PageSetupValues?
 
@@ -503,11 +534,36 @@ struct PageSetup: Equatable, Sendable {
     var contentHeight: Double { Double(height - marginTop - marginBottom) / 20 }
 }
 
+/// The header and footer parts a section shows on each kind of page, by relationship ID.
+struct HeaderFooterReferences: Equatable, Sendable {
+    var headers: [HeaderFooterKind: String] = [:]
+    var footers: [HeaderFooterKind: String] = [:]
+    /// `w:titlePg`: the first page has a header and footer of its own.
+    var titlePage = false
+}
+
+/// `w:headerReference`'s and `w:footerReference`'s types.
+enum HeaderFooterKind: String, CaseIterable, Sendable {
+    case `default`
+    case first
+    case even
+}
+
 /// A header or footer, reduced to the text it shows. `{PAGE}` stands for the
 /// page number field, which is filled in per page.
 struct HeaderFooterText: Equatable, Sendable {
     var text: String
     var alignment: ParagraphAlignment = .leading
+    var isFooter = false
+    /// The part's first paragraph's and first run's properties, kept when the
+    /// text is written afresh, so it keeps its style and font.
+    var paragraphPropertiesXML: String?
+    var runPropertiesXML: String?
+    /// Whether the part holds more than its text, such as a picture or a
+    /// table, which writing the text afresh does not keep.
+    var hasRichContent = false
+    /// Changed in Libretto, so its part is written afresh from the text.
+    var isEdited = false
 
     static let pageNumberPlaceholder = "{PAGE}"
     static let pageCountPlaceholder = "{NUMPAGES}"

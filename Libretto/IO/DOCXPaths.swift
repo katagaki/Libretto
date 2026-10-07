@@ -32,6 +32,9 @@ enum OOXML {
     static let headerType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
     static let footerType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer"
     static let hyperlinkType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+    static let settingsType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings"
+    static let headerContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"
+    static let footerContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
 
     static let numberingContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"
 

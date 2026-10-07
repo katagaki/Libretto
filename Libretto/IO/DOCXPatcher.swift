@@ -12,13 +12,14 @@ enum DOCXPatcher {
     /// scope for the write, so no declarations are added: the fragment goes
     /// back into a document that already declares them.
     static func editing(_ xml: String, _ edit: (XMLElement) -> Void) -> String? {
-        let namespaces = bindings(for: xml)
+        let namespaces = namespaceBindings(for: xml)
         guard let element = XMLLite.fragment(xml, namespaces: namespaces) else { return nil }
         edit(element)
         return XMLLite.serialize(element, inheritedNamespaces: namespaces)
     }
 
-    private static func bindings(for xml: String) -> [String: String] {
+    /// The standard prefixes, and a stand-in binding for every other prefix the fragment uses.
+    static func namespaceBindings(for xml: String) -> [String: String] {
         var result = OOXML.standardNamespaces
         let pattern = #/[<\s\/]([A-Za-z_][\w.\-]*):[A-Za-z_]/#
         for match in xml.matches(of: pattern) {
@@ -180,8 +181,30 @@ enum DOCXPatcher {
             <w:sectPr><w:pgSz/><w:pgMar w:header="708" w:footer="708" w:gutter="0"/>\
             <w:cols w:space="708"/><w:docGrid w:linePitch="360"/></w:sectPr>
             """
-        if setup.preservedXML != nil, setup.original == setup.values { return base }
+        let referencesChanged = setup.headerFooters != (setup.originalHeaderFooters ?? HeaderFooterReferences())
+        if setup.preservedXML != nil, setup.original == setup.values, !referencesChanged { return base }
         return editing(base) { sectPr in
+            if referencesChanged {
+                sectPr.children.filter { $0.name == "headerReference" || $0.name == "footerReference" }
+                    .forEach(sectPr.removeChild)
+                for (name, references) in [("headerReference", setup.headerFooters.headers),
+                                           ("footerReference", setup.headerFooters.footers)] {
+                    for kind in HeaderFooterKind.allCases {
+                        guard let id = references[kind] else { continue }
+                        let reference = XMLElement(
+                            name: name, qualifiedName: "w:" + name, attributes: ["type": kind.rawValue, "id": id],
+                            qualifiedAttributes: ["w:type": kind.rawValue, "r:id": id]
+                        )
+                        sectPr.insertChild(reference, at: sectPr.children.count)
+                    }
+                }
+                sectPr.children(named: "titlePg").forEach(sectPr.removeChild)
+                if setup.headerFooters.titlePage { sectPr.insertChild(.word("titlePg"), at: sectPr.children.count) }
+            }
+            guard setup.preservedXML == nil || setup.original != setup.values else {
+                sectPr.sortChildren(by: sectionPropertyOrder)
+                return
+            }
             let size = child("pgSz", of: sectPr)
             size.setWordAttribute("w", String(setup.width))
             size.setWordAttribute("h", String(setup.height))
@@ -200,6 +223,34 @@ enum DOCXPatcher {
             sectPr.sortChildren(by: sectionPropertyOrder)
         } ?? base
     }
+
+    // MARK: - Settings
+
+    /// `w:settings`'s children, in schema order.
+    static let settingsOrder = [
+        "writeProtection", "view", "zoom", "removePersonalInformation", "removeDateAndTime",
+        "doNotDisplayPageBoundaries", "displayBackgroundShape", "printPostScriptOverText",
+        "printFractionalCharacterWidth", "printFormsData", "embedTrueTypeFonts", "embedSystemFonts",
+        "saveSubsetFonts", "saveFormsData", "mirrorMargins", "alignBordersAndEdges", "bordersDoNotSurroundHeader",
+        "bordersDoNotSurroundFooter", "gutterAtTop", "hideSpellingErrors", "hideGrammaticalErrors",
+        "activeWritingStyle", "proofState", "formsDesign", "attachedTemplate", "linkStyles", "stylePaneFormatFilter",
+        "stylePaneSortMethod", "documentType", "mailMerge", "revisionView", "trackRevisions", "doNotTrackMoves",
+        "doNotTrackFormatting", "documentProtection", "autoFormatOverride", "styleLockTheme", "styleLockQFSet",
+        "defaultTabStop", "autoHyphenation", "consecutiveHyphenLimit", "hyphenationZone", "doNotHyphenateCaps",
+        "showEnvelope", "summaryLength", "clickAndTypeStyle", "defaultTableStyle", "evenAndOddHeaders",
+        "bookFoldRevPrinting", "bookFoldPrinting", "bookFoldPrintingSheets", "drawingGridHorizontalSpacing",
+        "drawingGridVerticalSpacing", "displayHorizontalDrawingGridEvery", "displayVerticalDrawingGridEvery",
+        "doNotUseMarginsForDrawingGridOrigin", "drawingGridHorizontalOrigin", "drawingGridVerticalOrigin",
+        "doNotShadeFormData", "noPunctuationKerning", "characterSpacingControl", "printTwoOnOne",
+        "strictFirstAndLastChars", "noLineBreaksAfter", "noLineBreaksBefore", "savePreviewPicture",
+        "doNotValidateAgainstSchema", "saveInvalidXml", "ignoreMixedContent", "alwaysShowPlaceholderText",
+        "doNotDemarcateInvalidXml", "saveXmlDataOnly", "useXSLTWhenSaving", "saveThroughXslt", "showXMLTags",
+        "alwaysMergeEmptyNamespace", "updateFields", "hdrShapeDefaults", "footnotePr", "endnotePr", "compat",
+        "docVars", "rsids", "mathPr", "attachedSchema", "themeFontLang", "clrSchemeMapping",
+        "doNotIncludeSubdocsInStats", "doNotAutoCompressPictures", "forceUpgrade", "captions",
+        "readModeInkLockDown", "smartTagType", "schemaLibrary", "shapeDefaults", "doNotEmbedSmartTags",
+        "decimalSymbol", "listSeparator",
+    ]
 
     // MARK: - Helpers
 

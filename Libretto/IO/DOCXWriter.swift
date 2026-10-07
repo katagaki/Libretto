@@ -22,6 +22,16 @@ enum DOCXWriter {
         for (id, address) in document.package.addedLinks.sorted(by: { $0.key < $1.key }) {
             package.addLink(address, relationshipID: id)
         }
+        for (id, text) in document.headerFooters.sorted(by: { $0.key < $1.key }) where text.isEdited {
+            package.writeHeaderFooter(text, relationshipID: id, existing: document.package.relationships[id],
+                                      styles: document.styles)
+        }
+        if document.evenAndOddHeaders != document.originalEvenAndOddHeaders {
+            package.editSettings { settings in
+                settings.children(named: "evenAndOddHeaders").forEach(settings.removeChild)
+                if document.evenAndOddHeaders { settings.insertChild(.word("evenAndOddHeaders"), at: settings.children.count) }
+            }
+        }
         package.finish()
 
         // Content types first, then the package relationships: some readers
@@ -203,6 +213,47 @@ struct BodyWriter {
         </w:tblBorders><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" \
         w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr>
         """
+}
+
+// MARK: - Headers and footers
+
+/// A header or footer's text as paragraphs: a line each, with the page
+/// number and page count as fields Word fills in.
+enum HeaderFooterWriter {
+    static func paragraphsXML(_ text: HeaderFooterText, styleID: String?) -> String {
+        paragraphs(text, styleID: styleID).joined()
+    }
+
+    static func paragraphs(_ text: HeaderFooterText, styleID: String?) -> [String] {
+        let base = text.paragraphPropertiesXML ?? (styleID.map { "<w:pPr><w:pStyle w:val=\"\(XMLLite.escape($0))\"/></w:pPr>" }
+            ?? "<w:pPr/>")
+        let pPr = DOCXPatcher.editing(base) { pPr in
+            pPr.children(named: "jc").forEach(pPr.removeChild)
+            if text.alignment != .leading {
+                pPr.insertChild(.word("jc", ["val": text.alignment.rawValue]), at: pPr.children.count)
+            }
+            pPr.sortChildren(by: DOCXPatcher.paragraphPropertyOrder)
+        }.flatMap { $0 == "<w:pPr/>" ? nil : $0 } ?? ""
+        let rPr = text.runPropertiesXML ?? ""
+        return text.text.components(separatedBy: "\n").map { line in
+            var output = "<w:p>\(pPr)"
+            var remaining = Substring(line)
+            while !remaining.isEmpty {
+                let fields = [(HeaderFooterText.pageNumberPlaceholder, "PAGE"), (HeaderFooterText.pageCountPlaceholder, "NUMPAGES")]
+                let next = fields.compactMap { field in remaining.range(of: field.0).map { ($0, field) } }
+                    .min { $0.0.lowerBound < $1.0.lowerBound }
+                let plain = next.map { remaining[..<$0.0.lowerBound] } ?? remaining
+                for (index, piece) in plain.components(separatedBy: "\t").enumerated() {
+                    if index > 0 { output += "<w:r>\(rPr)<w:tab/></w:r>" }
+                    if !piece.isEmpty { output += "<w:r>\(rPr)<w:t xml:space=\"preserve\">\(XMLLite.escape(piece))</w:t></w:r>" }
+                }
+                guard let (range, field) = next else { break }
+                output += "<w:fldSimple w:instr=\" \(field.1) \"><w:r>\(rPr)<w:t>1</w:t></w:r></w:fldSimple>"
+                remaining = remaining[range.upperBound...]
+            }
+            return output + "</w:p>"
+        }
+    }
 }
 
 // MARK: - Fields
@@ -403,6 +454,63 @@ private struct PackageEditor {
         let target = media.path.hasPrefix("word/") ? String(media.path.dropFirst("word/".count)) : "/" + media.path
         relationships.append("<Relationship Id=\"\(relationshipID)\" Type=\"\(OOXML.imageType)\" Target=\"\(target)\"/>")
         defaults[media.fileExtension.lowercased()] = media.contentType
+    }
+
+    /// Writes a header or footer part afresh from its text: over the part it
+    /// came from, keeping that part's root and anything that is not content,
+    /// or as a new part.
+    mutating func writeHeaderFooter(
+        _ text: HeaderFooterText, relationshipID: String, existing: DocumentPackage.Relationship?, styles: StyleSheet
+    ) {
+        let name = text.isFooter ? "ftr" : "hdr"
+        let styleName = text.isFooter ? "footer" : "header"
+        let styleID = styles.styles.values.first { $0.kind == .paragraph && $0.name.lowercased() == styleName }?.id
+        let content: Set<String> = ["p", "tbl", "sdt", "customXml"]
+        if let existing, !existing.isExternal {
+            let path = DOCXPaths.resolve(existing.target, relativeTo: documentPath)
+            edit(path) { root in
+                let namespaces = DOCXPatcher.namespaceBindings(
+                    for: HeaderFooterWriter.paragraphsXML(text, styleID: styleID)
+                ).merging(root.namespaceDeclarations) { _, own in own }
+                let index = root.children.firstIndex { content.contains($0.name) } ?? root.children.count
+                root.children.filter { content.contains($0.name) }.forEach(root.removeChild)
+                for (offset, xml) in HeaderFooterWriter.paragraphs(text, styleID: styleID).enumerated() {
+                    if let element = XMLLite.fragment(xml, namespaces: namespaces) {
+                        root.insertChild(element, at: index + offset)
+                    }
+                }
+            }
+            return
+        }
+        var number = 1
+        let stem = text.isFooter ? "footer" : "header"
+        while parts["word/\(stem)\(number).xml"] != nil { number += 1 }
+        let file = "\(stem)\(number).xml"
+        let path = DOCXPaths.resolve(file, relativeTo: documentPath)
+        let declarations = OOXML.standardNamespaces.sorted { $0.key < $1.key }
+            .map { " xmlns:\($0.key)=\"\($0.value)\"" }.joined()
+        parts[path] = Data("""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:\(name)\(declarations)>\(HeaderFooterWriter.paragraphsXML(text, styleID: styleID))</w:\(name)>
+            """.utf8)
+        let type = text.isFooter ? OOXML.footerType : OOXML.headerType
+        relationships.append("<Relationship Id=\"\(relationshipID)\" Type=\"\(type)\" Target=\"\(file)\"/>")
+        let contentType = text.isFooter ? OOXML.footerContentType : OOXML.headerContentType
+        overrides.append("<Override PartName=\"/\(path)\" ContentType=\"\(contentType)\"/>")
+    }
+
+    /// Edits the settings part, making one if the package has none.
+    mutating func editSettings(_ change: (XMLElement) -> Void) {
+        let path = partPath(
+            ofType: OOXML.settingsType, defaultName: "settings.xml",
+            contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml",
+            empty: "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                + "<w:settings xmlns:w=\"\(OOXML.wordNamespace)\"></w:settings>"
+        )
+        edit(path) { root in
+            change(root)
+            root.sortChildren(by: DOCXPatcher.settingsOrder)
+        }
     }
 
     mutating func addLink(_ address: String, relationshipID: String) {

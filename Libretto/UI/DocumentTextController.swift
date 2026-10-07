@@ -87,10 +87,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
 
     private func relayout() {
         pageCount = layoutManager.layOutPages(in: container, startingWith: pageCount)
-        view.update(
-            geometry: geometry, pages: pageCount, setup: document.pageSetup,
-            header: document.header, footer: document.footer
-        )
+        view.update(geometry: geometry, pages: pageCount, texts: WordDocumentHeaderFooter(document: document))
     }
 
     /// Takes a document from the owner, rendering it if it is not the one
@@ -100,7 +97,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         let newGeometry = PageGeometry(setup: new.pageSetup, gap: PagedDocumentView.pageGap)
         let needsRender = newScheme != scheme || newGeometry != geometry || new.body != lastBody
             || new.styles != document.styles || new.numbering != document.numbering
-            || new.header != document.header || new.footer != document.footer
+        let marginsChanged = WordDocumentHeaderFooter(document: new) != WordDocumentHeaderFooter(document: document)
         if needsRender {
             // The document's own version wins over typing not yet handed over.
             syncTask?.cancel()
@@ -109,7 +106,12 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         document = new
         scheme = newScheme
         geometry = newGeometry
-        if needsRender { render() } else { refreshContext() }
+        if needsRender {
+            render()
+        } else {
+            refreshContext()
+            if marginsChanged { relayout() }
+        }
     }
 
     // MARK: - Handing changes over

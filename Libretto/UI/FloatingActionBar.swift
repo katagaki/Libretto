@@ -101,6 +101,7 @@ struct FloatingActionBar: View {
             Button("Insert.Picture", systemImage: "photo") { state.isPickingPhoto = true }
             Button("Insert.Link", systemImage: "link") { state.presentedPanel = .link }
             Button("Insert.PageBreak", systemImage: "doc.on.doc") { controller?.insertPageBreak() }
+            Button("Insert.HeaderFooter", systemImage: "menubar.rectangle") { state.presentedPanel = .headerFooter }
         } label: {
             menuLabel("plus")
         }

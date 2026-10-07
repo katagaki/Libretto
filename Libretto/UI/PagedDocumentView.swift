@@ -14,10 +14,7 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
 
     private var geometry: PageGeometry?
     private var pages = 0
-    private var header: HeaderFooterText?
-    private var footer: HeaderFooterText?
-    private var headerDistance: CGFloat = 35
-    private var footerDistance: CGFloat = 35
+    private var texts = WordDocumentHeaderFooter()
     /// Until the user pinches, the pages are kept fitted to the width.
     private var fitsWidth = true
     private var lastWidth: CGFloat = 0
@@ -51,18 +48,12 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
 
     // MARK: - Pages
 
-    func update(geometry: PageGeometry, pages: Int, setup: PageSetup, header: HeaderFooterText?, footer: HeaderFooterText?) {
+    func update(geometry: PageGeometry, pages: Int, texts: WordDocumentHeaderFooter) {
         let changed = geometry != self.geometry
-        let headerDistance = CGFloat(setup.headerDistance) / 20
-        let footerDistance = CGFloat(setup.footerDistance) / 20
-        guard changed || pages != self.pages || header != self.header || footer != self.footer
-                || headerDistance != self.headerDistance || footerDistance != self.footerDistance else { return }
+        guard changed || pages != self.pages || texts != self.texts else { return }
         self.geometry = geometry
         self.pages = pages
-        self.header = header
-        self.footer = footer
-        self.headerDistance = headerDistance
-        self.footerDistance = footerDistance
+        self.texts = texts
         if changed { fitsWidth = true }
 
         while pageViews.count < pages {
@@ -92,12 +83,9 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
         canvas.center = CGPoint(x: size.width * zoom / 2, y: size.height * zoom / 2)
         scrollView.contentSize = CGSize(width: size.width * zoom, height: size.height * zoom)
 
-        let document = WordDocumentHeaderFooter(
-            header: header, footer: footer, headerDistance: headerDistance, footerDistance: footerDistance
-        )
         for (index, page) in pageViews.enumerated() {
             page.frame = geometry.pageFrame(index).offsetBy(dx: Self.inset, dy: Self.inset)
-            page.configure(document, page: index, of: pages, geometry: geometry)
+            page.configure(texts, page: index, of: pages, geometry: geometry)
         }
         textView.frame = CGRect(
             x: Self.inset + geometry.margins.left, y: Self.inset + geometry.margins.top,
@@ -189,13 +177,45 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
     }
 }
 
-/// The header and footer, as the page backgrounds need them.
-struct WordDocumentHeaderFooter {
-    var header: HeaderFooterText?
-    var footer: HeaderFooterText?
+/// The headers and footers, as the page backgrounds need them: which each
+/// page shows, and where.
+struct WordDocumentHeaderFooter: Equatable {
+    var headers: [HeaderFooterKind: HeaderFooterText] = [:]
+    var footers: [HeaderFooterKind: HeaderFooterText] = [:]
+    var titlePage = false
+    var evenAndOdd = false
     /// Points from the page's top and bottom edges.
-    var headerDistance: CGFloat
-    var footerDistance: CGFloat
+    var headerDistance: CGFloat = 35
+    var footerDistance: CGFloat = 35
+
+    init() {}
+
+    init(document: WordDocument) {
+        let setup = document.pageSetup
+        for kind in HeaderFooterKind.allCases {
+            headers[kind] = document.headerFooter(kind, isFooter: false, in: setup)
+            footers[kind] = document.headerFooter(kind, isFooter: true, in: setup)
+        }
+        titlePage = setup.headerFooters.titlePage
+        evenAndOdd = document.evenAndOddHeaders
+        headerDistance = CGFloat(setup.headerDistance) / 20
+        footerDistance = CGFloat(setup.footerDistance) / 20
+    }
+
+    private func kind(forPage index: Int) -> HeaderFooterKind {
+        if index == 0, titlePage { return .first }
+        if evenAndOdd, index % 2 == 1 { return .even }
+        return .default
+    }
+
+    /// What page `index` shows, if anything: an empty header shows nothing.
+    func header(forPage index: Int) -> HeaderFooterText? {
+        headers[kind(forPage: index)].flatMap { $0.text.trimmed.isEmpty ? nil : $0 }
+    }
+
+    func footer(forPage index: Int) -> HeaderFooterText? {
+        footers[kind(forPage: index)].flatMap { $0.text.trimmed.isEmpty ? nil : $0 }
+    }
 }
 
 /// One sheet of paper, with its header and footer drawn in the margins.
@@ -224,7 +244,8 @@ final class PageBackgroundView: UIView {
 
     func configure(_ texts: WordDocumentHeaderFooter, page: Int, of count: Int, geometry: PageGeometry) {
         layer.shadowPath = UIBezierPath(rect: bounds).cgPath
-        for (label, text, isFooter) in [(headerLabel, texts.header, false), (footerLabel, texts.footer, true)] {
+        for (label, text, isFooter) in [(headerLabel, texts.header(forPage: page), false),
+                                        (footerLabel, texts.footer(forPage: page), true)] {
             guard let text else {
                 label.isHidden = true
                 continue

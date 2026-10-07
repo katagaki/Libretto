@@ -81,11 +81,12 @@ enum HeaderFooterDrawing {
 
     static func draw(document: WordDocument, page: Int, of count: Int, geometry: PageGeometry, color: UIColor) {
         let frames = frames(document: document, geometry: geometry)
-        if let header = document.header {
+        let texts = WordDocumentHeaderFooter(document: document)
+        if let header = texts.header(forPage: page) {
             attributed(header, page: page, of: count, color: color)
                 .draw(with: frames.header, options: [.usesLineFragmentOrigin], context: nil)
         }
-        if let footer = document.footer {
+        if let footer = texts.footer(forPage: page) {
             let text = attributed(footer, page: page, of: count, color: color)
             let height = text.boundingRect(
                 with: CGSize(width: frames.footer.width, height: .greatestFiniteMagnitude),
