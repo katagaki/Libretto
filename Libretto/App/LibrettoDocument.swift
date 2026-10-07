@@ -12,19 +12,20 @@ extension UTType {
 }
 
 /// The app's document: a word-processing document, loaded from `.docx` or
-/// `.docm`, or from a Markdown or plain text file.
+/// `.docm`, or from a Markdown, source code or plain text file.
 ///
 /// A `.docm` opens like any other document. Its macros are kept, and saved
 /// back with it, but Libretto never runs them. A text file is saved back as
 /// text, so any formatting given to it is not kept, and a Markdown file keeps
-/// only the formatting Markdown has.
+/// only the formatting Markdown has. Source code is set in a code font and
+/// coloured by its syntax, and saved back as text.
 struct LibrettoDocument: FileDocument {
     static let readableContentTypes: [UTType] = [
-        .openXMLDocument, .macroEnabledDocument, .markdownDocument, .plainText,
-    ]
+        .openXMLDocument, .macroEnabledDocument, .markdownDocument,
+    ] + SourceLanguage.contentTypes + [.plainText]
     static let writableContentTypes: [UTType] = [
-        .openXMLDocument, .macroEnabledDocument, .markdownDocument, .plainText,
-    ]
+        .openXMLDocument, .macroEnabledDocument, .markdownDocument,
+    ] + SourceLanguage.contentTypes + [.plainText]
 
     var document: WordDocument
 
@@ -44,7 +45,15 @@ struct LibrettoDocument: FileDocument {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        if configuration.contentType.conforms(to: .markdownDocument) {
+        let filename = configuration.file.filename ?? configuration.file.preferredFilename
+        if let language = SourceLanguage(contentType: configuration.contentType, filename: filename) {
+            // A video sharing TypeScript's extension is no text to open.
+            if configuration.contentType.conforms(to: .mpeg2TransportStream), data.prefix(4096).contains(0) {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            document = PlainText.document(from: data, format: PlainText.codeFormat)
+            document.sourceLanguage = language
+        } else if configuration.contentType.conforms(to: .markdownDocument) {
             document = MarkdownReader.document(from: data)
         } else if configuration.contentType.conforms(to: .plainText) {
             document = PlainText.document(from: data)
@@ -57,7 +66,8 @@ struct LibrettoDocument: FileDocument {
         if configuration.contentType.conforms(to: .markdownDocument) {
             return FileWrapper(regularFileWithContents: MarkdownWriter.data(from: document))
         }
-        if configuration.contentType.conforms(to: .plainText) {
+        if configuration.contentType.conforms(to: .plainText) || document.sourceLanguage != nil
+            || SourceLanguage(contentType: configuration.contentType, filename: nil) != nil {
             return FileWrapper(regularFileWithContents: PlainText.data(from: document))
         }
         // A `.docx` cannot hold macros, and Word will not open one that claims to.

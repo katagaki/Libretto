@@ -22,6 +22,9 @@ struct WordDocument: Equatable, Sendable {
     /// The original package, part by part, for writing back what is not modelled.
     var package: DocumentPackage
     var unsupportedFeatures: UnsupportedFeatureReport
+    /// The language of the source file the document was read from, whose
+    /// syntax its text is coloured by. `nil` for anything that is not code.
+    var sourceLanguage: SourceLanguage?
 
     /// Whether the file carries a VBA project. Libretto keeps it but never runs it.
     var hasMacros: Bool { package.parts.keys.contains { $0.lowercased().hasSuffix("vbaproject.bin") } }

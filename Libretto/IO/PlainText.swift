@@ -3,6 +3,16 @@ import Foundation
 /// Reads and writes plain text files: a paragraph for each line, and no
 /// formatting kept.
 enum PlainText {
+    /// The font code is set in. Word sets code in Consolas, which shows here as Menlo.
+    static let codeFont = "Consolas"
+
+    /// Runs set in the code font.
+    static var codeFormat: RunFormat {
+        var style = RunStyle()
+        style.fontName = codeFont
+        return RunFormat(style: style)
+    }
+
     /// The file's text, in the encoding its byte order mark names or else
     /// UTF-8, falling back to Latin-1, with every line ending made `\n`.
     static func string(from data: Data) -> String {
@@ -18,14 +28,15 @@ enum PlainText {
         return text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
     }
 
-    static func document(from data: Data) -> WordDocument {
+    /// A document of the file's lines, all in `format`.
+    static func document(from data: Data, format: RunFormat = RunFormat()) -> WordDocument {
         var lines = string(from: data).components(separatedBy: "\n")
         // The newline ending the last line does not start another.
         if lines.count > 1, lines.last == "" { lines.removeLast() }
         var document = WordDocument()
         document.body = lines.map { line in
             // Lines follow one another as closely as they do in the file.
-            .paragraph(Paragraph(inlines: inlines(line), properties: ParagraphProperties(spacingAfter: 0)))
+            .paragraph(Paragraph(inlines: inlines(line, format: format), properties: ParagraphProperties(spacingAfter: 0)))
         }
         return document
     }

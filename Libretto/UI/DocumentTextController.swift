@@ -325,7 +325,8 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             return RunBox(before.format, hyperlink: after?.hyperlink == before.hyperlink ? before.hyperlink : nil)
         }
         if let at = box(at: location) { return RunBox(at.format, hyperlink: nil) }
-        return RunBox(RunFormat(), hyperlink: nil)
+        // Code is typed in the code font, even on a line with nothing to take it from.
+        return RunBox(document.sourceLanguage == nil ? RunFormat() : PlainText.codeFormat, hyperlink: nil)
     }
 
     private func typingAttributes(at location: Int) -> [NSAttributedString.Key: Any] {

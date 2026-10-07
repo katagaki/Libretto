@@ -7,8 +7,7 @@ import Foundation
 /// written as, and is saved back as that same text. Code blocks read as
 /// their lines, fences and all, so they too save back exactly as they were.
 enum Markdown {
-    /// The font code is set in. Word sets code in Consolas, which shows here as Menlo.
-    static let codeFont = "Consolas"
+    static let codeFont = PlainText.codeFont
 
     /// What a line opens, if it opens anything.
     enum LineStart: Equatable {
