@@ -384,6 +384,8 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             table = found.id
         }
         if state.selectedTableID != table { state.selectedTableID = table }
+        let isOnLink = selectedLink != nil
+        if state.isOnLink != isOnLink { state.isOnLink = isOnLink }
     }
 
     // MARK: - Character formatting
@@ -650,6 +652,113 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         return nil
     }
 
+    // MARK: - Links
+
+    /// The link at the selection, and the whole of the text it covers.
+    var selectedLink: (link: Hyperlink, range: NSRange)? {
+        let selection = textView.selectedRange
+        let paragraph = paragraphRange(at: selection.location)
+        // At a link's end, the caret is still in it.
+        for index in [selection.location, selection.location - 1]
+        where index >= paragraph.location && index < NSMaxRange(paragraph) && index < storage.length {
+            guard let link = (storage.attribute(.librettoRun, at: index, effectiveRange: nil) as? RunBox)?.hyperlink
+            else { continue }
+            var start = index
+            var end = index + 1
+            func linked(_ location: Int) -> Bool {
+                (storage.attribute(.librettoRun, at: location, effectiveRange: nil) as? RunBox)?.hyperlink == link
+            }
+            while start > paragraph.location, linked(start - 1) { start -= 1 }
+            while end < NSMaxRange(paragraph), linked(end) { end += 1 }
+            return (link, NSRange(location: start, length: end - start))
+        }
+        return nil
+    }
+
+    /// What the link panel starts with: the link being edited, if any, and the text it would cover.
+    var linkContext: (link: Hyperlink?, text: String) {
+        let string = storage.string as NSString
+        if let (link, range) = selectedLink { return (link, string.substring(with: range)) }
+        let selection = textView.selectedRange
+        let text = string.substring(with: selection).components(separatedBy: .newlines).first ?? ""
+        return (nil, text)
+    }
+
+    /// An address as typed, as the link Word reads: a bookmark for `#name`,
+    /// mail for an address with `@`, the web for the rest.
+    static func linkTarget(_ address: String) -> (url: String?, anchor: String?) {
+        let trimmed = address.trimmed
+        if trimmed.hasPrefix("#") { return (nil, String(trimmed.dropFirst())) }
+        if trimmed.range(of: #"^[A-Za-z][A-Za-z0-9+.\-]*:"#, options: .regularExpression) != nil { return (trimmed, nil) }
+        if trimmed.contains("@"), !trimmed.contains("/") { return ("mailto:" + trimmed, nil) }
+        return ("https://" + trimmed, nil)
+    }
+
+    /// Links the selection, or the link it is in, to `address`, showing
+    /// `text`; with nothing selected, inserts `text` as a link.
+    func makeLink(address: String, text: String) {
+        let target = Self.linkTarget(address)
+        var hyperlink: Hyperlink
+        if let anchor = target.anchor {
+            hyperlink = Hyperlink(
+                relationshipID: nil, anchor: anchor, url: nil,
+                attributesXML: " w:anchor=\"\(XMLLite.escape(anchor))\" w:history=\"1\""
+            )
+        } else {
+            let address = target.url ?? ""
+            let id = document.package.unusedRelationshipID()
+            document.package.addedLinks[id] = address
+            hyperlink = Hyperlink(
+                relationshipID: id, anchor: nil, url: URL(string: address),
+                attributesXML: " r:id=\"\(id)\" w:history=\"1\""
+            )
+        }
+        refreshContext()
+        let linkStyle = document.styles.styles.values.first { $0.kind == .character && $0.name == "Hyperlink" }?.id
+        func linked(_ format: RunFormat) -> RunFormat {
+            var format = format
+            if let linkStyle { format.style.characterStyleID = linkStyle }
+            return format
+        }
+
+        var range = selectedLink?.range ?? textView.selectedRange
+        let shown = text.isEmpty ? address.trimmed : text
+        let current = (storage.string as NSString).substring(with: range)
+        if range.length == 0 || (shown != current && !shown.contains("\n")) {
+            // New text for the link, looking like the text it replaces or follows.
+            var attributes = typingAttributes(at: range.length > 0 ? range.location + 1 : range.location)
+            let run = (attributes[.librettoRun] as? RunBox)?.format ?? RunFormat()
+            attributes[.librettoRun] = RunBox(linked(run), hyperlink: hyperlink)
+            storage.replaceCharacters(in: range, with: NSAttributedString(string: shown, attributes: attributes))
+            range = NSRange(location: range.location, length: (shown as NSString).length)
+        } else {
+            storage.beginEditing()
+            storage.enumerateAttribute(.librettoRun, in: range) { value, run, _ in
+                if storage.attribute(.attachment, at: run.location, effectiveRange: nil) is BlockAttachment { return }
+                let format = (value as? RunBox)?.format ?? RunFormat()
+                storage.addAttribute(.librettoRun, value: RunBox(linked(format), hyperlink: hyperlink), range: run)
+            }
+            storage.endEditing()
+        }
+        textView.selectedRange = NSRange(location: NSMaxRange(range), length: 0)
+        commit(restyling: range, scope: .formatting)
+    }
+
+    /// Unlinks the link at the selection, leaving its text.
+    func removeLink() {
+        guard let (link, range) = selectedLink else { return }
+        storage.beginEditing()
+        storage.enumerateAttribute(.librettoRun, in: range) { value, run, _ in
+            guard let box = value as? RunBox, box.hyperlink == link else { return }
+            var format = box.format
+            if let style = format.style.characterStyleID,
+               document.styles.styles[style]?.name == "Hyperlink" { format.style.characterStyleID = nil }
+            storage.addAttribute(.librettoRun, value: RunBox(format, hyperlink: nil), range: run)
+        }
+        storage.endEditing()
+        commit(restyling: range, scope: .formatting)
+    }
+
     // MARK: - Tables
 
     /// The text range of a block's line, mark included.
@@ -734,6 +843,7 @@ final class DocumentTextView: UITextView {
             UIKeyCommand(input: "b", modifierFlags: .command, action: #selector(boldCommand)),
             UIKeyCommand(input: "i", modifierFlags: .command, action: #selector(italicCommand)),
             UIKeyCommand(input: "u", modifierFlags: .command, action: #selector(underlineCommand)),
+            UIKeyCommand(input: "k", modifierFlags: .command, action: #selector(linkCommand)),
         ].map { command in
             command.wantsPriorityOverSystemBehavior = true
             return command
@@ -743,4 +853,5 @@ final class DocumentTextView: UITextView {
     @objc private func boldCommand() { controller?.toggleBold() }
     @objc private func italicCommand() { controller?.toggleItalic() }
     @objc private func underlineCommand() { controller?.toggleUnderline() }
+    @objc private func linkCommand() { controller?.state?.presentedPanel = .link }
 }

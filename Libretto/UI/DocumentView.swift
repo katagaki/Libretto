@@ -176,6 +176,7 @@ struct DocumentView: View {
         case .pageSetup: PageSetupPanel(document: wordDocument, state: state)
         case .table: TablePanel(state: state)
         case .insertTable: InsertTablePanel(state: state)
+        case .link: LinkPanel(state: state)
         }
     }
 

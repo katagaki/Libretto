@@ -7,6 +7,7 @@ enum EditorPanel: String, Identifiable, Hashable {
     case pageSetup
     case table
     case insertTable
+    case link
 
     var id: String { rawValue }
 
@@ -17,6 +18,7 @@ enum EditorPanel: String, Identifiable, Hashable {
         case .pageSetup: return String(localized: "Panel.PageSetup.Title")
         case .table: return String(localized: "Panel.Table.Title")
         case .insertTable: return String(localized: "Panel.InsertTable.Title")
+        case .link: return String(localized: "Panel.Link.Title")
         }
     }
 }
@@ -109,6 +111,8 @@ final class EditorState {
     var selectionFormat = SelectionFormat()
     /// The table the selection is on, if any, which the table panel edits.
     var selectedTableID: Table.ID?
+    /// Whether the selection is in a link, which the link panel edits.
+    var isOnLink = false
     /// What the last change was, read by the history when it records it.
     var pendingScope: EditScope = .other
     var errorMessage: String?

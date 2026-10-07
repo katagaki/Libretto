@@ -19,6 +19,9 @@ enum DOCXWriter {
         for (id, media) in document.package.addedMedia.sorted(by: { $0.key < $1.key }) {
             package.addMedia(media, relationshipID: id)
         }
+        for (id, address) in document.package.addedLinks.sorted(by: { $0.key < $1.key }) {
+            package.addLink(address, relationshipID: id)
+        }
         package.finish()
 
         // Content types first, then the package relationships: some readers
@@ -400,6 +403,13 @@ private struct PackageEditor {
         let target = media.path.hasPrefix("word/") ? String(media.path.dropFirst("word/".count)) : "/" + media.path
         relationships.append("<Relationship Id=\"\(relationshipID)\" Type=\"\(OOXML.imageType)\" Target=\"\(target)\"/>")
         defaults[media.fileExtension.lowercased()] = media.contentType
+    }
+
+    mutating func addLink(_ address: String, relationshipID: String) {
+        relationships.append("""
+            <Relationship Id="\(relationshipID)" Type="\(OOXML.hyperlinkType)" \
+            Target="\(XMLLite.escape(address))" TargetMode="External"/>
+            """)
     }
 
     /// Writes the relationships and content types gathered along the way.

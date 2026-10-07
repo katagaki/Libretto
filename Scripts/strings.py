@@ -126,6 +126,16 @@ S = {
  "Font.Section.All": ["All Fonts", "すべてのフォント", "모든 서체", "所有字体", "所有字體"],
  "Font.Theme.Body": ["Body (%@)", "本文 (%@)", "본문(%@)", "正文（%@）", "內文（%@）"],
  "Font.Theme.Headings": ["Headings (%@)", "見出し (%@)", "제목(%@)", "标题（%@）", "標題（%@）"],
+ "Panel.Link.Title": ["Link", "リンク", "링크", "链接", "連結"],
+ "Insert.Link": ["Link", "リンク", "링크", "链接", "連結"],
+ "ActionBar.EditLink": ["Edit Link", "リンクを編集", "링크 편집", "编辑链接", "編輯連結"],
+ "Link.Address": ["Address", "アドレス", "주소", "地址", "位址"],
+ "Link.Text": ["Text to Show", "表示する文字列", "표시할 텍스트", "要显示的文本", "要顯示的文字"],
+ "Link.Footer": ["A web address, an email address, or # and a bookmark’s name.", "Webアドレス、メールアドレス、または「#」とブックマーク名。", "웹 주소, 이메일 주소 또는 # 뒤에 책갈피 이름.", "网址、电子邮件地址，或 # 加书签名称。", "網址、電子郵件位址，或 # 加書籤名稱。"],
+ "Link.Insert": ["Insert Link", "リンクを挿入", "링크 삽입", "插入链接", "插入連結"],
+ "Link.Update": ["Update Link", "リンクを更新", "링크 업데이트", "更新链接", "更新連結"],
+ "Link.Open": ["Open Link", "リンクを開く", "링크 열기", "打开链接", "打開連結"],
+ "Link.Remove": ["Remove Link", "リンクを解除", "링크 제거", "移除链接", "移除連結"],
 }
 
 reuse = ["Alert.Error.Title", "Common.OK", "Format.ClearAll", "Format.Section.Text", "Format.Text.Size",

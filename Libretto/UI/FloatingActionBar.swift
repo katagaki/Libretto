@@ -51,11 +51,14 @@ struct FloatingActionBar: View {
 
                         if state.selectedTableID != nil {
                             tableGroup.id(Self.selectionActionsID)
+                        } else if state.isOnLink {
+                            linkGroup.id(Self.selectionActionsID)
                         }
                     }
                 }
                 .padding(.horizontal, 12)
                 .animation(.snappy(duration: 0.2), value: state.selectedTableID)
+                .animation(.snappy(duration: 0.2), value: state.isOnLink)
             }
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
@@ -63,6 +66,10 @@ struct FloatingActionBar: View {
             // of the bar; bring it into view rather than leave it to be found.
             .onChange(of: state.selectedTableID) { _, selected in
                 guard selected != nil else { return }
+                withAnimation(.snappy(duration: 0.3)) { proxy.scrollTo(Self.selectionActionsID, anchor: .trailing) }
+            }
+            .onChange(of: state.isOnLink) { _, isOn in
+                guard isOn else { return }
                 withAnimation(.snappy(duration: 0.3)) { proxy.scrollTo(Self.selectionActionsID, anchor: .trailing) }
             }
         }
@@ -92,6 +99,7 @@ struct FloatingActionBar: View {
         Menu {
             Button("Insert.Table", systemImage: "tablecells") { state.presentedPanel = .insertTable }
             Button("Insert.Picture", systemImage: "photo") { state.isPickingPhoto = true }
+            Button("Insert.Link", systemImage: "link") { state.presentedPanel = .link }
             Button("Insert.PageBreak", systemImage: "doc.on.doc") { controller?.insertPageBreak() }
         } label: {
             menuLabel("plus")
@@ -110,6 +118,16 @@ struct FloatingActionBar: View {
             action("trash", isOn: false, label: "ActionBar.DeleteTable") {
                 controller?.deleteSelectedTable()
             }
+        }
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    /// What can be done to the link the selection is in.
+    private var linkGroup: some View {
+        group {
+            panelAction("link", label: "ActionBar.EditLink", panel: .link)
+                .accessibilityIdentifier("editLink")
+            action("link.badge.minus", isOn: false, label: "Link.Remove") { controller?.removeLink() }
         }
         .transition(.scale.combined(with: .opacity))
     }

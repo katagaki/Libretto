@@ -533,6 +533,9 @@ struct DocumentPackage: Equatable, Sendable {
     var namespaces: [String: String]
     /// Pictures added in Libretto, by relationship ID, still to be written as parts.
     var addedMedia: [String: AddedMedia] = [:]
+    /// Addresses of links made in Libretto, by relationship ID, still to be
+    /// written as relationships.
+    var addedLinks: [String: String] = [:]
 
     struct Relationship: Equatable, Sendable {
         var type: String
@@ -556,8 +559,9 @@ struct DocumentPackage: Equatable, Sendable {
 
     /// A relationship ID not yet in use.
     func unusedRelationshipID() -> String {
-        var index = relationships.count + addedMedia.count + 1
-        while relationships["rId\(index)"] != nil || addedMedia["rId\(index)"] != nil { index += 1 }
+        var index = relationships.count + addedMedia.count + addedLinks.count + 1
+        while relationships["rId\(index)"] != nil || addedMedia["rId\(index)"] != nil
+            || addedLinks["rId\(index)"] != nil { index += 1 }
         return "rId\(index)"
     }
 }

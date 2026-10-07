@@ -94,6 +94,45 @@ struct ControllerTests {
         #expect(xml.contains("w:ascii=\"Georgia\""))
     }
 
+    @Test("A link made of a selection is written with its address, and can be taken away")
+    func links() throws {
+        let (controller, state, latest) = makeController()
+        type("Visit the site today", into: controller)
+        controller.textView.selectedRange = NSRange(location: 6, length: 8)
+        controller.makeLink(address: "example.com", text: "the site")
+        controller.textView.selectedRange = NSRange(location: 9, length: 0)
+        #expect(state.isOnLink)
+
+        let document = try #require(latest())
+        guard case .paragraph(let paragraph) = document.body[0] else { return }
+        let link = try #require(paragraph.inlines.first { $0.hyperlink != nil })
+        #expect(link.plainText == "the site")
+        #expect(link.hyperlink?.url == URL(string: "https://example.com"))
+        let parts = try ZipArchive.entries(in: DOCXWriter.data(from: document))
+        let rels = String(decoding: try #require(parts["word/_rels/document.xml.rels"]), as: UTF8.self)
+        #expect(rels.contains("Target=\"https://example.com\" TargetMode=\"External\""))
+        let reread = try DOCXReader.document(fromParts: parts)
+        guard case .paragraph(let readBack) = reread.body[0] else { return }
+        #expect(readBack.inlines.first { $0.hyperlink != nil }?.hyperlink?.url == URL(string: "https://example.com"))
+
+        controller.removeLink()
+        guard case .paragraph(let unlinked)? = latest()?.body[0] else { return }
+        #expect(unlinked.inlines.allSatisfy { $0.hyperlink == nil })
+        #expect(unlinked.plainText == "Visit the site today")
+    }
+
+    @Test("With nothing selected, a link goes in as its text")
+    func insertedLink() throws {
+        let (controller, _, latest) = makeController()
+        type("See ", into: controller)
+        controller.makeLink(address: "#summary", text: "the summary")
+        let document = try #require(latest())
+        guard case .paragraph(let paragraph) = document.body[0] else { return }
+        #expect(paragraph.plainText == "See the summary")
+        #expect(paragraph.inlines.last?.hyperlink?.anchor == "summary")
+        #expect(DocumentTextController.linkTarget("me@example.com").url == "mailto:me@example.com")
+    }
+
     @Test("Return after a heading starts a body paragraph")
     func nextStyle() throws {
         let (controller, _, latest) = makeController()
