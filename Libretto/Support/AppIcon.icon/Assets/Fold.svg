@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!--
+    The page's top corner, folded over. Drawn in white; the layer is filled
+    solid white in dark mode, where Icon Composer would otherwise tint it into
+    the page behind it and the fold would vanish.
+  -->
+  <g fill="#FFFFFF">
+    <path d="M604 196L764 356H644A40 40 0 0 1 604 316V196Z" opacity="0.85"/>
+  </g>
+</svg>

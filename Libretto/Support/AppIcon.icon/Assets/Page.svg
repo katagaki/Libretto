@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <!--
-    The page glyph: a sheet with its top corner folded over. The lines of
-    text set on it live in Lines.svg, a layer of their own, so they can be
-    kept white in dark mode while the sheet takes on the icon's tint.
+    The page glyph: a sheet with its top corner cut away. The folded corner
+    lives in Fold.svg and the lines of text set on the sheet in Lines.svg,
+    layers of their own, so they can be kept white in dark mode while the
+    sheet takes on the icon's tint.
     Drawn in white — Icon Composer tints and lights the layer, so the artwork
     carries only shape and opacity.
   -->
   <g fill="#FFFFFF">
     <path d="M300 196H604L764 356V780A48 48 0 0 1 716 828H300A48 48 0 0 1 252 780V244A48 48 0 0 1 300 196Z" opacity="0.32"/>
-    <path d="M604 196L764 356H644A40 40 0 0 1 604 316V196Z" opacity="0.85"/>
   </g>
 </svg>
