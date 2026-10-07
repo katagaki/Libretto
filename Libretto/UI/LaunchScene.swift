@@ -93,7 +93,7 @@ struct LaunchText: View {
     }
 
     private static let pictureLines = 3
-    private static let paragraphLengths = [5, 3, 4, 2, 4]
+    private static let paragraphLengths = [4, 3, 4, 2, 4]
     private static let lineWidths: [CGFloat] = [1, 0.97, 1, 0.94, 0.99, 0.96]
     private static let lastLineWidths: [CGFloat] = [0.58, 0.36, 0.72, 0.45, 0.64]
 }
