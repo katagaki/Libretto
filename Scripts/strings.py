@@ -119,6 +119,13 @@ S = {
  "ViewMode.Page": ["Full Document", "ドキュメント全体", "전체 문서", "完整文稿", "完整文件"],
  "Toolbar.SourceCode": ["Source Code", "ソースコード", "소스 코드", "源代码", "原始碼"],
  "Toolbar.Find": ["Find and Replace", "検索と置換", "찾기 및 대치", "查找和替换", "尋找與取代"],
+ "Format.Font": ["Font", "フォント", "서체", "字体", "字體"],
+ "Font.Default": ["Default", "デフォルト", "기본", "默认", "預設"],
+ "Font.Section.Theme": ["Theme Fonts", "テーマのフォント", "테마 서체", "主题字体", "主題字體"],
+ "Font.Section.Document": ["In This Document", "この書類内", "이 문서에서 사용", "此文稿中", "此文件中"],
+ "Font.Section.All": ["All Fonts", "すべてのフォント", "모든 서체", "所有字体", "所有字體"],
+ "Font.Theme.Body": ["Body (%@)", "本文 (%@)", "본문(%@)", "正文（%@）", "內文（%@）"],
+ "Font.Theme.Headings": ["Headings (%@)", "見出し (%@)", "제목(%@)", "标题（%@）", "標題（%@）"],
 }
 
 reuse = ["Alert.Error.Title", "Common.OK", "Format.ClearAll", "Format.Section.Text", "Format.Text.Size",

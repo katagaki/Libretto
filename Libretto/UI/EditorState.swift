@@ -82,6 +82,8 @@ struct SelectionFormat: Equatable {
     var verticalAlignment: RunStyle.VerticalPosition = .baseline
     /// Half-points.
     var fontSize = 22
+    /// The font the text resolves to, a theme font as `+minor` or `+major`.
+    var fontName: String?
     var colorHex: String?
     var highlight: String?
     var alignment: ParagraphAlignment = .leading

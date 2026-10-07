@@ -10,6 +10,12 @@ struct FormatPanel: View {
     var body: some View {
         Form {
             Section("Format.Section.Text") {
+                NavigationLink {
+                    FontList(state: state)
+                } label: {
+                    LabeledContent("Format.Font", value: fontLabel)
+                }
+                .accessibilityIdentifier("font")
                 HStack(spacing: 12) {
                     styleToggle("bold", label: "Toolbar.Bold", isOn: format.isBold) { controller?.toggleBold() }
                     styleToggle("italic", label: "Toolbar.Italic", isOn: format.isItalic) { controller?.toggleItalic() }
@@ -69,6 +75,21 @@ struct FormatPanel: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// The selection's font by name, the theme's by its role.
+    private var fontLabel: String {
+        let styles = controller?.document.styles
+        switch format.fontName {
+        case RunStyle.minorThemeFont?:
+            return String(format: String(localized: "Font.Theme.Body"), styles?.minorFont ?? "")
+        case RunStyle.majorThemeFont?:
+            return String(format: String(localized: "Font.Theme.Headings"), styles?.majorFont ?? "")
+        case let name?:
+            return name
+        case nil:
+            return String(localized: "Font.Default")
+        }
     }
 
     /// Half-points, as a point size: 11, or 10.5.

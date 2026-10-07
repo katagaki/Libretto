@@ -366,6 +366,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         result.isStruckThrough = run.isStruckThrough ?? false
         result.verticalAlignment = run.verticalAlignment ?? .baseline
         result.fontSize = run.fontSize ?? 22
+        result.fontName = run.fontName
         result.colorHex = run.colorHex
         result.highlight = run.highlight
         result.alignment = resolvedParagraph.alignment ?? .leading
@@ -442,6 +443,11 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             let current = styles.resolvedRunStyle(style, paragraphStyleID: paragraphStyleID).fontSize ?? 22
             style.fontSize = min(192, max(2, current + points * 2))
         }
+    }
+
+    /// Sets the font family, or one of the theme's by its `+minor` or `+major` stand-in.
+    func setFont(_ name: String?) {
+        editRuns { style, _ in style.fontName = name }
     }
 
     func setTextColor(_ hex: String?) {

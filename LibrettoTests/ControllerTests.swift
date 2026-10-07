@@ -78,6 +78,22 @@ struct ControllerTests {
         #expect(paragraph.inlines.first { $0.plainText == "2" }?.format.style.isBold == true)
     }
 
+    @Test("A font chosen for a selection is the run's, and written as its fonts")
+    func font() throws {
+        let (controller, state, latest) = makeController()
+        type("One two three", into: controller)
+        controller.textView.selectedRange = NSRange(location: 4, length: 3)
+        controller.setFont("Georgia")
+        #expect(state.selectionFormat.fontName == "Georgia")
+
+        let document = try #require(latest())
+        guard case .paragraph(let paragraph) = document.body[0] else { return }
+        #expect(paragraph.inlines[1].format.style.fontName == "Georgia")
+        let xml = String(decoding: try ZipArchive.entries(in: DOCXWriter.data(from: document))["word/document.xml"]!,
+                         as: UTF8.self)
+        #expect(xml.contains("w:ascii=\"Georgia\""))
+    }
+
     @Test("Return after a heading starts a body paragraph")
     func nextStyle() throws {
         let (controller, _, latest) = makeController()
