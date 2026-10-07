@@ -394,7 +394,7 @@ final class LineNumberGutter: UIView {
         func drawNumber(_ index: Int, in fragment: CGRect) {
             let isCaretLine = index == caretLine
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: font, .foregroundColor: isCaretLine ? UIColor.label : UIColor.tertiaryLabel,
+                .font: font, .foregroundColor: isCaretLine ? UIColor.label : UIColor.secondaryLabel,
             ]
             let number = String(index + 1) as NSString
             let size = number.size(withAttributes: attributes)
