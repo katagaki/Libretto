@@ -57,7 +57,7 @@ struct LaunchText: View {
                     context.fill(Path(roundedRect: bar, cornerRadius: lineHeight / 2), with: .color(ink))
                     y += leading
                 }
-                y += leading * 0.75
+                y += leading * 0.3
                 line += length
             }
         }
