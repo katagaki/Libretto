@@ -40,9 +40,9 @@ struct LaunchText: View {
             while y < size.height {
                 // A paragraph runs a few lines and ends on a short one.
                 let length = Self.paragraphLengths[line % Self.paragraphLengths.count]
-                // The picture sits beside the opening paragraph, as tall as its lines.
+                // The picture sits at the start of the opening paragraph, which wraps around it.
                 if line == 0 {
-                    let height = leading * CGFloat(length) - (leading - lineHeight)
+                    let height = leading * CGFloat(Self.pictureLines) - (leading - lineHeight)
                     picture = CGRect(x: left, y: y, width: min(height * 4 / 3, measure * 0.45), height: height)
                     drawPicture(in: picture, context: context, ink: ink)
                 }
@@ -92,6 +92,7 @@ struct LaunchText: View {
         context.fill(hills, with: .color(ink))
     }
 
+    private static let pictureLines = 3
     private static let paragraphLengths = [5, 3, 4, 2, 4]
     private static let lineWidths: [CGFloat] = [1, 0.97, 1, 0.94, 0.99, 0.96]
     private static let lastLineWidths: [CGFloat] = [0.58, 0.36, 0.72, 0.45, 0.64]
