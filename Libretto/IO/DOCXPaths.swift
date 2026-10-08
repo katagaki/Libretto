@@ -38,6 +38,14 @@ enum OOXML {
     static let commentsContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
     static let commentsExtendedContentType =
         "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"
+    static func notesType(_ kind: NoteKind) -> String {
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/\(kind.rawValue)s"
+    }
+
+    static func notesContentType(_ kind: NoteKind) -> String {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.\(kind.rawValue)s+xml"
+    }
+
     static let w14Namespace = "http://schemas.microsoft.com/office/word/2010/wordml"
     static let w15Namespace = "http://schemas.microsoft.com/office/word/2012/wordml"
     static let headerContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"

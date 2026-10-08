@@ -109,6 +109,8 @@ struct FloatingActionBar: View {
             Button("Insert.PageBreak", systemImage: "doc.on.doc") { controller?.insertPageBreak() }
             Button("Insert.HeaderFooter", systemImage: "menubar.rectangle") { state.presentedPanel = .headerFooter }
             Button("Insert.Comment", systemImage: "plus.bubble") { state.presentedPanel = .comments }
+            Button("Insert.Footnote", systemImage: "text.append") { insertNote(.footnote) }
+            Button("Insert.Endnote", systemImage: "text.badge.plus") { insertNote(.endnote) }
         } label: {
             menuLabel("plus")
         }
@@ -116,6 +118,12 @@ struct FloatingActionBar: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("insert")
         .accessibilityLabel("ActionBar.Insert")
+    }
+
+    /// Inserts a note and opens the notes panel to write it.
+    private func insertNote(_ kind: NoteKind) {
+        state.focusedNoteKey = controller?.insertNote(kind)
+        state.presentedPanel = .notes
     }
 
     /// What can be done to the table the selection is on.

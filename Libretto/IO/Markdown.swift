@@ -695,7 +695,7 @@ enum MarkdownWriter {
             case .tab: text = "\t"
             case .lineBreak: text = "\n"
             case .runChild(_, let display), .paragraphChild(_, let display): text = display ?? ""
-            case .pageBreak, .image: text = ""
+            case .pageBreak, .image, .note: text = ""
             }
             guard !text.isEmpty else { continue }
             let marks = MarkdownMarks(inline)

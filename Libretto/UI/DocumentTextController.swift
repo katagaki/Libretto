@@ -144,13 +144,20 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         let read = AttributedReader.blocks(
             from: storage, finalParagraph: finalParagraph, trailingMarkers: trailingMarkers
         )
+        // Notes are numbered by where they are referred to; one gone or moved renumbers the rest.
+        let references = NoteNumbering.references(in: read.blocks)
+        let notesMoved = references != NoteNumbering.references(in: lastBody)
+        if notesMoved {
+            let referred = Set(references.map { "\($0.kind.rawValue):\($0.id)" })
+            document.notes.removeAll { !referred.contains($0.key) }
+        }
         document.body = read.blocks
         lastBody = read.blocks
         state?.pendingScope = scope
         onChange?(document)
         // Text typed beside a table, or rows taken out of one: the text no
         // longer looks like what it reads as, so show what it reads as.
-        if read.needsRender { render() }
+        if read.needsRender || notesMoved { render() }
     }
 
     /// After a command changed the text's model: restyle, renumber, lay out, hand over.

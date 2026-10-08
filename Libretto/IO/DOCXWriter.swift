@@ -26,6 +26,12 @@ enum DOCXWriter {
             package.writeHeaderFooter(text, relationshipID: id, existing: document.package.relationships[id],
                                       styles: document.styles)
         }
+        for kind in NoteKind.allCases {
+            let notes = document.notes.filter { $0.kind == kind }
+            if notes != document.originalNotes.filter({ $0.kind == kind }) {
+                package.writeNotes(notes, kind: kind, styles: document.styles)
+            }
+        }
         if document.comments != document.originalComments {
             package.writeComments(document.comments, styles: document.styles)
         }
@@ -182,6 +188,8 @@ struct BodyWriter {
             return "<w:br/>"
         case .pageBreak:
             return "<w:br w:type=\"page\"/>"
+        case .note(let reference):
+            return reference.xml
         case .image(let image):
             if let xml = image.xml { return xml }
             pictureID += 1
@@ -296,6 +304,26 @@ enum HeaderFooterWriter {
             }
             return output + "</w:p>"
         }
+    }
+}
+
+// MARK: - Notes
+
+enum NoteWriter {
+    /// A `w:footnote` or `w:endnote`, a paragraph per line, the first led by the note's number.
+    static func xml(_ note: Note, textStyle: String?, referenceStyle: String?) -> String {
+        let name = note.kind.rawValue
+        let pPr = note.paragraphPropertiesXML ?? textStyle.map { "<w:pPr><w:pStyle w:val=\"\($0)\"/></w:pPr>" } ?? ""
+        let markProperties = referenceStyle.map { "<w:rPr><w:rStyle w:val=\"\($0)\"/></w:rPr>" }
+            ?? "<w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>"
+        let rPr = note.runPropertiesXML ?? ""
+        let paragraphs = note.text.components(separatedBy: "\n").enumerated().map { index, line in
+            let mark = index == 0 ? "<w:r>\(markProperties)<w:\(name)Ref/></w:r>" : ""
+            let text = index == 0 ? " " + line : line
+            let run = text.isEmpty ? "" : "<w:r>\(rPr)<w:t xml:space=\"preserve\">\(XMLLite.escape(text))</w:t></w:r>"
+            return "<w:p>\(pPr)\(mark)\(run)</w:p>"
+        }.joined()
+        return "<w:\(name) w:id=\"\(XMLLite.escape(note.id))\">\(paragraphs)</w:\(name)>"
     }
 }
 
@@ -622,6 +650,57 @@ private struct PackageEditor {
                     qualifiedAttributes: Dictionary(uniqueKeysWithValues: attributes.map { ("\(prefix):\($0.key)", $0.value) })
                 )
                 root.insertChild(element, at: root.children.count)
+            }
+        }
+    }
+
+    /// Writes a footnotes or endnotes part: notes untouched as they were read,
+    /// the rest afresh. A new part starts with the separators Word expects.
+    mutating func writeNotes(_ notes: [Note], kind: NoteKind, styles: StyleSheet) {
+        let type = OOXML.notesType(kind)
+        let name = kind.rawValue
+        let isNew = !existingRelationships.values.contains { $0.type == type && !$0.isExternal }
+        let separators = ["separator": -1, "continuationSeparator": 0].sorted { $0.value < $1.value }.map { type, id in
+            """
+            <w:\(name) w:type="\(type)" w:id="\(id)"><w:p><w:pPr><w:spacing w:after="0" w:line="240" \
+            w:lineRule="auto"/></w:pPr><w:r><w:\(type)/></w:r></w:p></w:\(name)>
+            """
+        }.joined()
+        let path = partPath(
+            ofType: type, defaultName: "\(name)s.xml", contentType: OOXML.notesContentType(kind),
+            empty: "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+                + "<w:\(name)s xmlns:w=\"\(OOXML.wordNamespace)\">\(separators)</w:\(name)s>"
+        )
+        let textStyle = styles.styles.values.first { $0.kind == .paragraph && $0.name.lowercased() == "\(name) text" }?.id
+        let referenceStyle = styles.styles.values
+            .first { $0.kind == .character && $0.name.lowercased() == "\(name) reference" }?.id
+        edit(path) { root in
+            var namespaces = root.namespaceDeclarations.filter { !$0.key.isEmpty }
+            namespaces["w"] = namespaces["w"] ?? OOXML.wordNamespace
+            let existing = Dictionary(
+                root.children(named: name).compactMap { element in element.attribute("id").map { ($0, element) } },
+                uniquingKeysWith: { first, _ in first }
+            )
+            root.children(named: name).filter { ($0.attribute("type") ?? "normal") == "normal" }.forEach(root.removeChild)
+            for note in notes {
+                if let element = existing[note.id], note.text == note.originalText, note.originalXML != nil {
+                    root.insertChild(element, at: root.children.count)
+                } else if let element = XMLLite.fragment(
+                    NoteWriter.xml(note, textStyle: textStyle, referenceStyle: referenceStyle), namespaces: namespaces
+                ) {
+                    root.insertChild(element, at: root.children.count)
+                }
+            }
+        }
+        if isNew {
+            // Word looks for the separators by the IDs the settings name.
+            editSettings { settings in
+                guard settings.firstChild(named: "\(name)Pr") == nil,
+                      let properties = XMLLite.fragment(
+                          "<w:\(name)Pr><w:\(name) w:id=\"-1\"/><w:\(name) w:id=\"0\"/></w:\(name)Pr>",
+                          namespaces: ["w": settings.sourceNamespaceBinding(forPrefix: "w") ?? OOXML.wordNamespace]
+                      ) else { return }
+                settings.insertChild(properties, at: settings.children.count)
             }
         }
     }

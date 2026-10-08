@@ -14,6 +14,8 @@ struct RenderContext: Sendable {
     /// Six-digit RGB of what the text sits on, such as a shaded table cell,
     /// so its colour adapts against that rather than the page.
     var backgroundHex: String?
+    /// Each note reference's number, by `kind:id`.
+    var noteNumbers: [String: String] = [:]
 
     init(document: WordDocument, scheme: ColorScheme, images: ImageStore) {
         styles = document.styles
@@ -23,6 +25,7 @@ struct RenderContext: Sendable {
         contentWidth = document.pageSetup.contentWidth
         contentHeight = document.pageSetup.contentHeight
         self.images = images
+        noteNumbers = NoteNumbering.numbers(in: document)
     }
 
     var defaultTextColor: UIColor { scheme == .dark ? .white : .black }

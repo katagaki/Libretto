@@ -87,6 +87,17 @@ enum DOCXReader {
         document.originalTrackRevisions = tracksRevisions
         document.evenAndOddHeaders = evenAndOdd
         document.originalEvenAndOddHeaders = evenAndOdd
+        for kind in NoteKind.allCases {
+            guard let root = part(ofType: OOXML.notesType(kind)).flatMap({ try? XMLLite.parse($0) }) else { continue }
+            document.notes += NoteReader.notes(from: root, kind: kind)
+        }
+        document.originalNotes = document.notes
+        if let format = settings?.firstDescendant(atPath: "footnotePr/numFmt")?.attribute("val") {
+            document.footnoteFormat = format
+        }
+        if let format = settings?.firstDescendant(atPath: "endnotePr/numFmt")?.attribute("val") {
+            document.endnoteFormat = format
+        }
         if let comments = part(ofType: OOXML.commentsType).flatMap({ try? XMLLite.parse($0) }) {
             let extended = part(ofType: OOXML.commentsExtendedType).flatMap { try? XMLLite.parse($0) }
             document.comments = CommentReader.comments(from: comments, extended: extended)
@@ -117,7 +128,6 @@ private final class ReadContext {
     let relationships: [String: DocumentPackage.Relationship]
     let styles: StyleSheet
     var report = UnsupportedFeatureReport()
-    private var footnoteCount = 0
 
     init(namespaces: [String: String], relationships: [String: DocumentPackage.Relationship], styles: StyleSheet) {
         self.namespaces = namespaces
@@ -316,9 +326,11 @@ private final class ReadContext {
                 report.insert(child.name == "object" ? .embeddedObjects : .shapes)
                 keep(child, display: "\u{25A2}")
             case "footnoteReference", "endnoteReference":
-                report.insert(.footnotes)
-                footnoteCount += 1
-                keep(child, display: String(footnoteCount))
+                guard let id = child.attribute("id"), let xml = serialize(child) else {
+                    keep(child, display: nil)
+                    continue
+                }
+                add(.note(NoteReference(kind: child.name == "footnoteReference" ? .footnote : .endnote, id: id, xml: xml)))
             case "commentReference":
                 keep(child, display: nil)
             default:
@@ -617,6 +629,30 @@ enum StyleReader {
             result.instances[id] = abstract
         }
         return result
+    }
+}
+
+enum NoteReader {
+    /// The notes in a footnotes or endnotes part, leaving out the separators Word keeps there.
+    static func notes(from root: XMLElement, kind: NoteKind) -> [Note] {
+        let namespaces = root.namespaceDeclarations
+        return root.children(named: kind.rawValue).compactMap { element in
+            guard let id = element.attribute("id"), element.attribute("type") == nil
+                    || element.attribute("type") == "normal" else { return nil }
+            let paragraphs = element.children(named: "p")
+            let text = paragraphs.map { HeaderFooterReader.plainText(of: $0) }.joined(separator: "\n")
+                // The text usually starts with a space after the note's number.
+                .trimmingPrefix(" ")
+            let firstRun = paragraphs.first?.children.first { $0.name == "r" && $0.firstChild(named: "t") != nil }
+            return Note(
+                kind: kind, id: id, text: String(text),
+                paragraphPropertiesXML: paragraphs.first?.firstChild(named: "pPr")
+                    .flatMap { XMLLite.serialize($0, inheritedNamespaces: namespaces) },
+                runPropertiesXML: firstRun?.firstChild(named: "rPr")
+                    .flatMap { XMLLite.serialize($0, inheritedNamespaces: namespaces) },
+                originalXML: XMLLite.serialize(element, inheritedNamespaces: namespaces), originalText: String(text)
+            )
+        }
     }
 }
 

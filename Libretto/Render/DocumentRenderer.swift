@@ -99,6 +99,10 @@ enum DocumentRenderer {
                 let shown = display ?? ""
                 attributes[.librettoToken] = InlineBox(inline, display: shown)
                 string = shown
+            case .note(let reference):
+                let shown = context.noteNumbers["\(reference.kind.rawValue):\(reference.id)"] ?? "*"
+                attributes[.librettoToken] = InlineBox(inline, display: shown)
+                string = shown
             }
             guard !string.isEmpty else { continue }
             let piece = NSMutableAttributedString(string: string, attributes: attributes)

@@ -29,6 +29,12 @@ struct WordDocument: Equatable, Sendable {
     /// part's `w:trackRevisions`, and whether they were when the file was read.
     var trackRevisions = false
     var originalTrackRevisions = false
+    /// Footnotes and endnotes, from their parts, separators left out; and as read.
+    var notes: [Note] = []
+    var originalNotes: [Note] = []
+    /// How footnotes and endnotes are numbered, from the settings' `w:footnotePr` and `w:endnotePr`.
+    var footnoteFormat = "decimal"
+    var endnoteFormat = "lowerRoman"
     /// Body-level elements after the last block, before the section properties.
     var trailingXML: [String] = []
     /// The original package, part by part, for writing back what is not modelled.
@@ -347,7 +353,7 @@ struct Inline: Equatable, Sendable {
         case .tab: return "\t"
         case .lineBreak: return "\n"
         case .pageBreak: return ""
-        case .image: return ""
+        case .image, .note: return ""
         case .runChild(_, let display), .paragraphChild(_, let display): return display ?? ""
         }
     }
@@ -366,6 +372,8 @@ enum InlineContent: Equatable, Sendable {
     /// A child of `w:p` that is not a run: a bookmark, a tracked change, an
     /// equation. Written back outside any run.
     case paragraphChild(xml: String, display: String?)
+    /// A footnote or endnote's reference, shown as the note's number.
+    case note(NoteReference)
 
     /// Whether this takes no room in the text, so it rides along on the
     /// character after it rather than standing in the text itself.
@@ -612,6 +620,82 @@ struct HeaderFooterText: Equatable, Sendable {
     func resolved(page: Int, of count: Int) -> String {
         text.replacingOccurrences(of: Self.pageNumberPlaceholder, with: String(page))
             .replacingOccurrences(of: Self.pageCountPlaceholder, with: String(count))
+    }
+}
+
+// MARK: - Notes
+
+enum NoteKind: String, CaseIterable, Sendable {
+    case footnote
+    case endnote
+}
+
+/// Where a note is referred to: `w:footnoteReference` or `w:endnoteReference`.
+struct NoteReference: Equatable, Hashable, Sendable {
+    var kind: NoteKind
+    var id: String
+    /// The reference element as read, or as made.
+    var xml: String
+
+    init(kind: NoteKind, id: String, xml: String? = nil) {
+        self.kind = kind
+        self.id = id
+        self.xml = xml ?? "<w:\(kind.rawValue)Reference w:id=\"\(XMLLite.escape(id))\"/>"
+    }
+}
+
+/// A footnote or endnote, reduced to its text.
+struct Note: Equatable, Sendable, Identifiable {
+    var kind: NoteKind
+    /// `w:id`, which the reference carries.
+    var id: String
+    var text: String
+    /// The note's first paragraph's and first run's properties, kept when the text is written afresh.
+    var paragraphPropertiesXML: String?
+    var runPropertiesXML: String?
+    /// The `w:footnote` or `w:endnote` as read, written back while the text is unchanged.
+    var originalXML: String?
+    var originalText: String?
+
+    var key: String { "\(kind.rawValue):\(id)" }
+}
+
+extension WordDocument {
+    /// A note ID of `kind` not yet in use.
+    func unusedNoteID(_ kind: NoteKind) -> String {
+        String(max(0, notes.filter { $0.kind == kind }.compactMap { Int($0.id) }.max() ?? 0) + 1)
+    }
+}
+
+/// Numbers notes as Word does: footnotes and endnotes each counted from one,
+/// in the order the text refers to them.
+enum NoteNumbering {
+    /// The references in reading order, tables' among them.
+    static func references(in blocks: [Block]) -> [NoteReference] {
+        blocks.flatMap { block -> [NoteReference] in
+            switch block {
+            case .paragraph(let paragraph):
+                return paragraph.inlines.compactMap { if case .note(let reference) = $0.content { return reference } else { return nil } }
+            case .table(let table):
+                return table.rows.flatMap { $0.cells.flatMap { references(in: $0.blocks) } }
+            case .preserved:
+                return []
+            }
+        }
+    }
+
+    /// Each reference's number, by `kind:id`, in the document's formats.
+    static func numbers(in document: WordDocument) -> [String: String] {
+        var counts: [NoteKind: Int] = [:]
+        var result: [String: String] = [:]
+        for reference in references(in: document.body) {
+            let key = "\(reference.kind.rawValue):\(reference.id)"
+            guard result[key] == nil else { continue }
+            counts[reference.kind, default: 0] += 1
+            let format = reference.kind == .footnote ? document.footnoteFormat : document.endnoteFormat
+            result[key] = ListLabeler.format(counts[reference.kind]!, as: format)
+        }
+        return result
     }
 }
 

@@ -11,6 +11,7 @@ enum EditorPanel: String, Identifiable, Hashable {
     case headerFooter
     case comments
     case review
+    case notes
 
     var id: String { rawValue }
 
@@ -25,6 +26,7 @@ enum EditorPanel: String, Identifiable, Hashable {
         case .headerFooter: return String(localized: "Panel.HeaderFooter.Title")
         case .comments: return String(localized: "Panel.Comments.Title")
         case .review: return String(localized: "Panel.Review.Title")
+        case .notes: return String(localized: "Panel.Notes.Title")
         }
     }
 }
@@ -65,10 +67,11 @@ enum EditScope: Equatable {
     case headerFooter
     case comment
     case review
+    case notes
     case other
 
     /// Typing, and editing a table's text or a header, arrive a keystroke at a time.
-    var coalesces: Bool { self == .typing || self == .table || self == .headerFooter }
+    var coalesces: Bool { self == .typing || self == .table || self == .headerFooter || self == .notes }
 
     var actionName: String {
         switch self {
@@ -82,6 +85,7 @@ enum EditScope: Equatable {
         case .headerFooter: return String(localized: "Undo.HeaderFooter")
         case .comment: return String(localized: "Undo.Comment")
         case .review: return String(localized: "Undo.Review")
+        case .notes: return String(localized: "Undo.Notes")
         case .other: return String(localized: "Undo.Edit")
         }
     }
@@ -132,6 +136,8 @@ final class EditorState {
     var selectedCommentIDs: [String] = []
     /// The comment the comments panel opens to.
     var focusedCommentID: String?
+    /// The note the notes panel opens to, by `kind:id`.
+    var focusedNoteKey: String?
     /// What the last change was, read by the history when it records it.
     var pendingScope: EditScope = .other
     var errorMessage: String?

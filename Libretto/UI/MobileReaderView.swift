@@ -50,6 +50,8 @@ struct MobileItem: Identifiable {
         case image(UIImage, width: CGFloat)
         case table(MobileTable)
         case preserved(String)
+        /// A footnote or endnote, after the text: its number and its text.
+        case note(number: String, text: String)
     }
 }
 
@@ -140,6 +142,16 @@ struct MobileLayout {
                 }
             }
         }
+        // Notes come after the text, footnotes then endnotes, in the order they are referred to.
+        let notes = Dictionary(document.notes.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        var seen: Set<String> = []
+        for kind in NoteKind.allCases {
+            for reference in NoteNumbering.references(in: document.body) where reference.kind == kind {
+                let key = "\(kind.rawValue):\(reference.id)"
+                guard seen.insert(key).inserted, let note = notes[key], let number = context.noteNumbers[key] else { continue }
+                items.append(MobileItem(id: "note-\(key)", content: .note(number: number, text: note.text)))
+            }
+        }
         self.items = items
     }
 }
@@ -205,6 +217,9 @@ struct MobileTextBuilder {
             case .runChild(_, let display), .paragraphChild(_, let display):
                 guard let display, !display.isEmpty else { continue }
                 string = display
+            case .note(let reference):
+                guard let number = context.noteNumbers["\(reference.kind.rawValue):\(reference.id)"] else { continue }
+                string = number
             }
             var piece = runText(string, format: inline.format, paragraph: paragraph, revision: inline.revision)
             if let url = inline.hyperlink?.url { piece.link = url }
@@ -257,6 +272,12 @@ private struct MobileItemView: View {
         case .table(let table):
             MobileTableView(table: table)
                 .padding(.vertical, 8)
+        case .note(let number, let text):
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(number).font(.caption2).foregroundStyle(.secondary).frame(minWidth: 14, alignment: .trailing)
+                Text(text).font(.footnote).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 6)
         case .preserved(let text):
             Text(text)
                 .font(.callout)
