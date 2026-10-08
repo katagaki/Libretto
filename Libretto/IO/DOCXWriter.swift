@@ -163,6 +163,15 @@ struct BodyWriter {
                 output += xml
                 continue
             }
+            // A field's characters and code each have a run of their own, as Word writes them.
+            if case .runChild(let xml, _) = inline.content, xml.contains("fldChar") || xml.contains("instrText") {
+                closeRun()
+                output += "<w:r>"
+                if let rPr = DOCXPatcher.runPropertiesXML(for: inline.format) { output += rPr }
+                output += runContent(inline.content, isDeleted: openRevision.map { !$0.kind.adds } ?? false)
+                output += "</w:r>"
+                continue
+            }
             if openRun != inline.format {
                 closeRun()
                 output += "<w:r>"

@@ -191,6 +191,7 @@ struct DocumentView: View {
         case .review: ReviewPanel(document: wordDocument, state: state)
         case .notes: NotesPanel(document: wordDocument, state: state)
         case .navigator: NavigatorPanel(document: wordDocument, state: state)
+        case .crossReference: CrossReferencePanel(document: wordDocument, state: state)
         }
     }
 
@@ -247,6 +248,10 @@ struct DocumentView: View {
                         openPanel(.navigator)
                     }
                     .accessibilityIdentifier("navigator")
+                    Button("Toolbar.UpdateFields", systemImage: "arrow.clockwise") {
+                        setMode(.page)
+                        state.controller?.updateFields()
+                    }
                 }
                 if !document.unsupportedFeatures.isEmpty {
                     Button("Toolbar.UnsupportedFeatures.Label", systemImage: "exclamationmark.triangle") {

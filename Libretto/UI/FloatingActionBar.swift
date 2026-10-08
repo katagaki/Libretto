@@ -106,6 +106,18 @@ struct FloatingActionBar: View {
             Button("Insert.Table", systemImage: "tablecells") { state.presentedPanel = .insertTable }
             Button("Insert.Picture", systemImage: "photo") { state.isPickingPhoto = true }
             Button("Insert.Link", systemImage: "link") { state.presentedPanel = .link }
+            Menu("Insert.Field", systemImage: "curlybraces") {
+                Button("Field.Date") { controller?.insertField("DATE \\@ \"d MMMM yyyy\"") }
+                Button("Field.Time") { controller?.insertField("TIME \\@ \"h:mm am/pm\"") }
+                Button("Field.Page") { controller?.insertField("PAGE") }
+                Button("Field.PageCount") { controller?.insertField("NUMPAGES") }
+                Divider()
+                Button("Field.CaptionFigure") { controller?.insertCaption(String(localized: "Caption.Figure")) }
+                Button("Field.CaptionTable") { controller?.insertCaption(String(localized: "Caption.Table")) }
+                Button("Field.CaptionEquation") { controller?.insertCaption(String(localized: "Caption.Equation")) }
+                Divider()
+                Button("Field.CrossReference") { state.presentedPanel = .crossReference }
+            }
             Button("Insert.Bookmark", systemImage: "bookmark") {
                 state.navigatorTab = .bookmarks
                 state.presentedPanel = .navigator

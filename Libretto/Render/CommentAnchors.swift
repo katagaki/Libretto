@@ -114,7 +114,10 @@ enum BookmarkAnchors {
     /// A name Word accepts: a letter first, then letters, digits and underscores, forty at most.
     static func validName(_ name: String) -> String {
         var result = String(name.map { $0.isLetter || $0.isNumber ? $0 : "_" }.prefix(40))
-        if let first = result.first, !first.isLetter { result = "B" + result.dropFirst() }
+        // Word's own hidden ones start with an underscore; the rest, with a letter.
+        if let first = result.first, !first.isLetter, !(first == "_" && name.hasPrefix("_")) {
+            result = "B" + result.dropFirst()
+        }
         return result.isEmpty ? "Bookmark" : result
     }
 }
