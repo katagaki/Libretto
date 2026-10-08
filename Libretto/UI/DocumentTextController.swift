@@ -31,6 +31,10 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     var pageCount = 1
     /// Each comment's text, by comment ID, as of the last layout.
     var commentRanges: [String: NSRange] = [:]
+    /// When this editing session's tracked changes are dated: one date for
+    /// them all, so what is typed in a session reads as one change.
+    let revisionDate = Reviewer.now
+    private var pendingInsertion: NSRange?
     private var syncTask: Task<Void, Never>?
     /// Formatting chosen with nothing selected, for the text typed next.
     /// The text's length when it was chosen tells typing apart from moving
@@ -166,6 +170,9 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     // MARK: - Text view
 
     func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        // What UIKit is about to put in, which tracking marks as inserted once it is in.
+        pendingInsertion = document.trackRevisions && !text.isEmpty
+            ? NSRange(location: range.location, length: (text as NSString).length) : nil
         let replacement = text.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n").replacingOccurrences(of: "\u{2029}", with: "\n")
         let string = storage.string as NSString
@@ -175,6 +182,12 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         if replacement.isEmpty, range.length == 1, range.location < string.length,
            storage.attribute(.librettoBlock, at: range.location, effectiveRange: nil) != nil {
             textView.selectedRange = NSRange(location: max(0, range.location - 1), length: 1)
+            return false
+        }
+
+        // While changes are tracked, what is taken out stays, marked deleted.
+        if document.trackRevisions, range.length > 0, textView.markedTextRange == nil {
+            trackedChange(in: range, replacement: replacement)
             return false
         }
 
@@ -246,10 +259,31 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     }
 
     func textViewDidChange(_ textView: UITextView) {
+        markPendingInsertion()
         textDidChange(touchingParagraphs: true)
     }
 
-    private func textDidChange(touchingParagraphs: Bool) {
+    /// UIKit puts typed text in with attributes of its own choosing; while
+    /// changes are tracked, what it put in is an insertion.
+    private func markPendingInsertion() {
+        guard let pending = pendingInsertion, let revision = insertionRevision else { return }
+        pendingInsertion = nil
+        let range = NSIntersectionRange(pending, NSRange(location: 0, length: storage.length))
+        guard range.length > 0 else { return }
+        storage.beginEditing()
+        storage.enumerateAttribute(.librettoRun, in: range) { value, run, _ in
+            let box = value as? RunBox
+            guard box?.revision != revision else { return }
+            storage.addAttribute(
+                .librettoRun, value: RunBox(box?.format ?? RunFormat(), hyperlink: box?.hyperlink, revision: revision),
+                range: run
+            )
+        }
+        DocumentRenderer.restyle(storage, paragraphsIn: range, finalParagraph: finalParagraph, context: context)
+        storage.endEditing()
+    }
+
+    func textDidChange(touchingParagraphs: Bool) {
         applyTypingFormat()
         if touchingParagraphs {
             let changed = DocumentRenderer.relabel(storage, finalParagraph: finalParagraph, context: context)
@@ -272,8 +306,10 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         let range = NSRange(location: typing.location, length: inserted)
         storage.beginEditing()
         storage.enumerateAttribute(.librettoRun, in: range) { value, run, _ in
-            let hyperlink = (value as? RunBox)?.hyperlink
-            storage.addAttribute(.librettoRun, value: RunBox(typing.format, hyperlink: hyperlink), range: run)
+            let box = value as? RunBox
+            storage.addAttribute(
+                .librettoRun, value: RunBox(typing.format, hyperlink: box?.hyperlink, revision: box?.revision), range: run
+            )
         }
         DocumentRenderer.restyle(storage, paragraphsIn: range, finalParagraph: finalParagraph, context: context)
         storage.endEditing()
@@ -320,7 +356,10 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     /// chosen for it, else the text before it in the same paragraph, else
     /// the paragraph's mark, which looks like the paragraph's last text.
     func runBox(forTypingAt location: Int) -> RunBox {
-        if let typing = typingFormat, typing.location == location { return RunBox(typing.format, hyperlink: nil) }
+        let revision = insertionRevision
+        if let typing = typingFormat, typing.location == location {
+            return RunBox(typing.format, hyperlink: nil, revision: revision)
+        }
         let paragraph = paragraphRange(at: location)
         let string = storage.string as NSString
         func box(at index: Int) -> RunBox? {
@@ -331,10 +370,17 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         if let before = box(at: location - 1), string.character(at: location - 1) != TextCharacters.paragraphBreakUnit {
             // A link carries on only into text that is still inside it.
             let after = box(at: location)
-            return RunBox(before.format, hyperlink: after?.hyperlink == before.hyperlink ? before.hyperlink : nil)
+            return RunBox(
+                before.format, hyperlink: after?.hyperlink == before.hyperlink ? before.hyperlink : nil, revision: revision
+            )
         }
-        if let at = box(at: location) { return RunBox(at.format, hyperlink: nil) }
-        return RunBox(RunFormat(), hyperlink: nil)
+        if let at = box(at: location) { return RunBox(at.format, hyperlink: nil, revision: revision) }
+        return RunBox(RunFormat(), hyperlink: nil, revision: revision)
+    }
+
+    /// What text typed now is part of: an insertion, while changes are tracked.
+    var insertionRevision: Revision? {
+        document.trackRevisions ? Revision(kind: .insertion, author: Reviewer.name, date: revisionDate) : nil
     }
 
     func typingAttributes(at location: Int) -> [NSAttributedString.Key: Any] {
@@ -345,7 +391,9 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         let run = runBox(forTypingAt: location)
         var attributes = DocumentRenderer.paragraphAttributes(paragraph, label: label, context: context)
         attributes.merge(
-            DocumentRenderer.runAttributes(run.format, hyperlink: run.hyperlink, paragraph: paragraph, context: context)
+            DocumentRenderer.runAttributes(
+                run.format, hyperlink: run.hyperlink, revision: run.revision, paragraph: paragraph, context: context
+            )
         ) { _, run in run }
         for key in librettoPositionalKeys { attributes[key] = nil }
         return attributes
@@ -391,6 +439,9 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         if state.selectedTableID != table { state.selectedTableID = table }
         let isOnLink = selectedLink != nil
         if state.isOnLink != isOnLink { state.isOnLink = isOnLink }
+        let isOnChange = revisionRange(around: selection.location) != nil
+        if state.isOnChange != isOnChange { state.isOnChange = isOnChange }
+        if state.isTracking != document.trackRevisions { state.isTracking = document.trackRevisions }
         publishSelectedComments()
     }
 
@@ -416,7 +467,9 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             var format = box?.format ?? RunFormat()
             let paragraph = paragraphModel(for: paragraphRange(at: range.location))
             change(&format.style, paragraph.properties.styleID)
-            storage.addAttribute(.librettoRun, value: RunBox(format, hyperlink: box?.hyperlink), range: range)
+            storage.addAttribute(
+                .librettoRun, value: RunBox(format, hyperlink: box?.hyperlink, revision: box?.revision), range: range
+            )
         }
         storage.endEditing()
         commit(restyling: selection, scope: .formatting)
@@ -734,15 +787,18 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             // New text for the link, looking like the text it replaces or follows.
             var attributes = typingAttributes(at: range.length > 0 ? range.location + 1 : range.location)
             let run = (attributes[.librettoRun] as? RunBox)?.format ?? RunFormat()
-            attributes[.librettoRun] = RunBox(linked(run), hyperlink: hyperlink)
+            attributes[.librettoRun] = RunBox(linked(run), hyperlink: hyperlink, revision: insertionRevision)
             storage.replaceCharacters(in: range, with: NSAttributedString(string: shown, attributes: attributes))
             range = NSRange(location: range.location, length: (shown as NSString).length)
         } else {
             storage.beginEditing()
             storage.enumerateAttribute(.librettoRun, in: range) { value, run, _ in
                 if storage.attribute(.attachment, at: run.location, effectiveRange: nil) is BlockAttachment { return }
-                let format = (value as? RunBox)?.format ?? RunFormat()
-                storage.addAttribute(.librettoRun, value: RunBox(linked(format), hyperlink: hyperlink), range: run)
+                let box = value as? RunBox
+                storage.addAttribute(
+                    .librettoRun, value: RunBox(linked(box?.format ?? RunFormat()), hyperlink: hyperlink, revision: box?.revision),
+                    range: run
+                )
             }
             storage.endEditing()
         }
@@ -759,7 +815,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             var format = box.format
             if let style = format.style.characterStyleID,
                document.styles.styles[style]?.name == "Hyperlink" { format.style.characterStyleID = nil }
-            storage.addAttribute(.librettoRun, value: RunBox(format, hyperlink: nil), range: run)
+            storage.addAttribute(.librettoRun, value: RunBox(format, hyperlink: nil, revision: box.revision), range: run)
         }
         storage.endEditing()
         commit(restyling: range, scope: .formatting)

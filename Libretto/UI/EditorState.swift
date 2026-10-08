@@ -10,6 +10,7 @@ enum EditorPanel: String, Identifiable, Hashable {
     case link
     case headerFooter
     case comments
+    case review
 
     var id: String { rawValue }
 
@@ -23,6 +24,7 @@ enum EditorPanel: String, Identifiable, Hashable {
         case .link: return String(localized: "Panel.Link.Title")
         case .headerFooter: return String(localized: "Panel.HeaderFooter.Title")
         case .comments: return String(localized: "Panel.Comments.Title")
+        case .review: return String(localized: "Panel.Review.Title")
         }
     }
 }
@@ -62,6 +64,7 @@ enum EditScope: Equatable {
     case pageSetup
     case headerFooter
     case comment
+    case review
     case other
 
     /// Typing, and editing a table's text or a header, arrive a keystroke at a time.
@@ -78,6 +81,7 @@ enum EditScope: Equatable {
         case .pageSetup: return String(localized: "Undo.PageSetup")
         case .headerFooter: return String(localized: "Undo.HeaderFooter")
         case .comment: return String(localized: "Undo.Comment")
+        case .review: return String(localized: "Undo.Review")
         case .other: return String(localized: "Undo.Edit")
         }
     }
@@ -121,6 +125,9 @@ final class EditorState {
     var selectedTableID: Table.ID?
     /// Whether the selection is in a link, which the link panel edits.
     var isOnLink = false
+    /// Whether the selection is on a tracked change, and whether changes are being tracked.
+    var isOnChange = false
+    var isTracking = false
     /// The comments on the text at the selection.
     var selectedCommentIDs: [String] = []
     /// The comment the comments panel opens to.

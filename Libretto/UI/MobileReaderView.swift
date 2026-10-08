@@ -206,20 +206,22 @@ struct MobileTextBuilder {
                 guard let display, !display.isEmpty else { continue }
                 string = display
             }
-            var piece = runText(string, format: inline.format, paragraph: paragraph)
+            var piece = runText(string, format: inline.format, paragraph: paragraph, revision: inline.revision)
             if let url = inline.hyperlink?.url { piece.link = url }
             result += piece
         }
         return result
     }
 
-    private func runText(_ string: String, format: RunFormat, paragraph: Paragraph) -> AttributedString {
+    private func runText(
+        _ string: String, format: RunFormat, paragraph: Paragraph, revision: Revision? = nil
+    ) -> AttributedString {
         let resolved = context.styles.resolvedRunStyle(
             format.style, paragraphStyleID: paragraph.properties.styleID ?? context.styles.defaultParagraphStyleID
         )
         let size = CGFloat(resolved.fontSize ?? 22) / 2
         let attributes = Typography.runAttributes(
-            format.style, paragraph: paragraph.properties, hyperlink: nil, context: context,
+            format.style, paragraph: paragraph.properties, hyperlink: nil, revision: revision, context: context,
             fontScale: scale(forPointSize: size)
         )
         var piece = AttributedString(resolved.allCaps == true ? string.uppercased() : string)

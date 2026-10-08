@@ -54,6 +54,10 @@ enum AttributedReader {
                     ? text.attribute(.librettoParagraph, at: segment.location, effectiveRange: nil) as? ParagraphBox
                     : nil)
             var paragraph = box?.paragraph ?? finalParagraph
+            if let mark {
+                // The mark's own tracked change rides on the mark.
+                paragraph.markRevision = (text.attribute(.librettoRun, at: mark, effectiveRange: nil) as? RunBox)?.revision
+            }
             var inlines = self.inlines(in: segment, of: text, skippingUnformatted: false)
             if let mark, let markers = text.attribute(.librettoMarkers, at: mark, effectiveRange: nil) as? MarkersBox {
                 inlines += markers.markers
@@ -99,17 +103,19 @@ enum AttributedReader {
         let string = text.string as NSString
         var result: [Inline] = []
         var seenMarkers: Set<ObjectIdentifier> = []
-        var token: (box: InlineBox, text: String)?
+        var token: (box: InlineBox, text: String, revision: Revision?)?
 
         func flushToken() {
             guard let current = token else { return }
             token = nil
             if current.text == current.box.display {
-                result.append(current.box.inline)
+                var inline = current.box.inline
+                inline.revision = current.revision
+                result.append(inline)
             } else if !current.text.isEmpty {
                 // Edited: what it was is gone, and what is left is plain text.
                 result.append(Inline(.text(current.text), format: current.box.inline.format,
-                                     hyperlink: current.box.inline.hyperlink))
+                                     hyperlink: current.box.inline.hyperlink, revision: current.revision))
             }
         }
 
@@ -119,22 +125,25 @@ enum AttributedReader {
                 flushToken()
                 result += markers.markers
             }
+            let run = attributes[.librettoRun] as? RunBox
             if let box = attributes[.librettoToken] as? InlineBox {
                 if token?.box !== box { flushToken() }
-                token = (box, (token?.text ?? "") + string.substring(with: range))
+                token = (box, (token?.text ?? "") + string.substring(with: range), token?.revision ?? run?.revision)
                 return
             }
             flushToken()
 
             if let attachment = attributes[.attachment] as? ImageAttachment {
-                result.append(attachment.inline)
+                var inline = attachment.inline
+                inline.revision = run?.revision
+                result.append(inline)
                 return
             }
             if attributes[.attachment] is BlockAttachment { return }
-            let run = attributes[.librettoRun] as? RunBox
             if skippingUnformatted, run == nil { return }
             let format = run?.format ?? RunFormat()
             let hyperlink = run?.hyperlink
+            let revision = run?.revision
 
             // UTF-16 units, gathered whole: a character outside the Basic
             // Multilingual Plane, an emoji say, is two of them.
@@ -142,7 +151,7 @@ enum AttributedReader {
             func flushText() {
                 if !pending.isEmpty {
                     let text = String(utf16CodeUnits: pending, count: pending.count)
-                    result.append(Inline(.text(text), format: format, hyperlink: hyperlink))
+                    result.append(Inline(.text(text), format: format, hyperlink: hyperlink, revision: revision))
                 }
                 pending = []
             }
@@ -151,13 +160,13 @@ enum AttributedReader {
                 switch unit {
                 case TextCharacters.tabUnit:
                     flushText()
-                    result.append(Inline(.tab, format: format, hyperlink: hyperlink))
+                    result.append(Inline(.tab, format: format, hyperlink: hyperlink, revision: revision))
                 case TextCharacters.lineBreakUnit, 0x0D, 0x2029:
                     flushText()
-                    result.append(Inline(.lineBreak, format: format, hyperlink: hyperlink))
+                    result.append(Inline(.lineBreak, format: format, hyperlink: hyperlink, revision: revision))
                 case TextCharacters.pageBreakUnit:
                     flushText()
-                    result.append(Inline(.pageBreak, format: format, hyperlink: hyperlink))
+                    result.append(Inline(.pageBreak, format: format, hyperlink: hyperlink, revision: revision))
                 case TextCharacters.attachmentUnit:
                     // An attachment from elsewhere, which there is no part for.
                     flushText()

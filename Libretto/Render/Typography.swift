@@ -48,8 +48,8 @@ enum Typography {
 
     /// The attributes a run of text is drawn with.
     static func runAttributes(
-        _ direct: RunStyle, paragraph: ParagraphProperties, hyperlink: Hyperlink?, context: RenderContext,
-        fontScale: CGFloat = 1
+        _ direct: RunStyle, paragraph: ParagraphProperties, hyperlink: Hyperlink?, revision: Revision? = nil,
+        context: RenderContext, fontScale: CGFloat = 1
     ) -> [NSAttributedString.Key: Any] {
         let paragraphStyleID = paragraph.styleID ?? context.styles.defaultParagraphStyleID
         var style = context.styles.resolvedRunStyle(direct, paragraphStyleID: paragraphStyleID)
@@ -79,7 +79,27 @@ enum Typography {
         case .subscript: attributes[.baselineOffset] = -font.pointSize * 0.25
         default: break
         }
+        if let revision {
+            // In the colour of whoever made the change: added text underlined, removed text struck through.
+            let color = reviewerColor(revision.author, scheme: context.scheme)
+            attributes[.foregroundColor] = color
+            if revision.kind.adds {
+                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                attributes[.underlineColor] = color
+            } else {
+                attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+                attributes[.strikethroughColor] = color
+            }
+        }
         return attributes
+    }
+
+    /// A colour of its own for each reviewer, as Word gives them.
+    static func reviewerColor(_ author: String?, scheme: ColorScheme) -> UIColor {
+        let palette: [UIColor] = [.systemRed, .systemBlue, .systemGreen, .systemPurple, .systemOrange, .systemTeal]
+        let hash = (author ?? "").unicodeScalars.reduce(5381) { ($0 &* 33) &+ Int($1.value) }
+        let color = palette[abs(hash) % palette.count]
+        return color.resolvedColor(with: UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light))
     }
 
     /// Word's `w:highlight` names.

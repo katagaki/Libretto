@@ -74,7 +74,10 @@ enum DocumentRenderer {
                 continue
             }
             var attributes = base.merging(
-                runAttributes(inline.format, hyperlink: inline.hyperlink, paragraph: paragraph, context: context)
+                runAttributes(
+                    inline.format, hyperlink: inline.hyperlink, revision: inline.revision, paragraph: paragraph,
+                    context: context
+                )
             ) { _, run in run }
             let string: String
             switch inline.content {
@@ -113,7 +116,7 @@ enum DocumentRenderer {
         // The mark looks like the text before it, so an empty paragraph is as
         // tall as one with text in it.
         var attributes = base.merging(
-            runAttributes(lastFormat, hyperlink: nil, paragraph: paragraph, context: context)
+            runAttributes(lastFormat, hyperlink: nil, revision: paragraph.markRevision, paragraph: paragraph, context: context)
         ) { _, run in run }
         if !pending.isEmpty { attributes[.librettoMarkers] = MarkersBox(pending) }
         output.append(NSAttributedString(string: "\n", attributes: attributes))
@@ -121,12 +124,13 @@ enum DocumentRenderer {
     }
 
     static func runAttributes(
-        _ format: RunFormat, hyperlink: Hyperlink?, paragraph: Paragraph, context: RenderContext
+        _ format: RunFormat, hyperlink: Hyperlink?, revision: Revision? = nil, paragraph: Paragraph,
+        context: RenderContext
     ) -> [NSAttributedString.Key: Any] {
         var attributes = Typography.runAttributes(
-            format.style, paragraph: paragraph.properties, hyperlink: hyperlink, context: context
+            format.style, paragraph: paragraph.properties, hyperlink: hyperlink, revision: revision, context: context
         )
-        attributes[.librettoRun] = RunBox(format, hyperlink: hyperlink)
+        attributes[.librettoRun] = RunBox(format, hyperlink: hyperlink, revision: revision)
         return attributes
     }
 
@@ -237,6 +241,7 @@ enum DocumentRenderer {
 
     private static let displayKeys: [NSAttributedString.Key] = [
         .font, .foregroundColor, .backgroundColor, .underlineStyle, .strikethroughStyle, .baselineOffset,
+        .underlineColor, .strikethroughColor,
     ]
 
     private static func restyleParagraph(
@@ -257,7 +262,7 @@ enum DocumentRenderer {
             storage.addAttributes(
                 Typography.runAttributes(
                     box?.format.style ?? RunStyle(), paragraph: paragraph.properties,
-                    hyperlink: box?.hyperlink, context: context
+                    hyperlink: box?.hyperlink, revision: box?.revision, context: context
                 ),
                 range: runRange
             )

@@ -51,13 +51,30 @@ enum DOCXPatcher {
     ]
 
     /// The `w:pPr` to write for a paragraph, or `nil` if it needs none.
-    static func paragraphPropertiesXML(for paragraph: Paragraph) -> String? {
+    /// `markRevisionAttributes` are the attributes the mark's tracked change is written with.
+    static func paragraphPropertiesXML(for paragraph: Paragraph, markRevisionAttributes: String? = nil) -> String? {
         let new = paragraph.properties
         let old = paragraph.originalProperties ?? ParagraphProperties()
-        if let preserved = paragraph.preservedPropertiesXML, new == old { return preserved }
-        if paragraph.preservedPropertiesXML == nil, new == ParagraphProperties() { return nil }
+        let markChanged = paragraph.markRevision != paragraph.originalMarkRevision
+        if let preserved = paragraph.preservedPropertiesXML, new == old, !markChanged { return preserved }
+        if paragraph.preservedPropertiesXML == nil, new == ParagraphProperties(), paragraph.markRevision == nil {
+            return nil
+        }
 
         let edited = editing(paragraph.preservedPropertiesXML ?? "<w:pPr/>") { pPr in
+            if markChanged {
+                let rPr = child("rPr", of: pPr)
+                rPr.children.filter { Revision.Kind(rawValue: $0.name) != nil }.forEach(rPr.removeChild)
+                if let revision = paragraph.markRevision,
+                   let element = XMLLite.fragment(
+                       "<w:\(revision.kind.rawValue)\(markRevisionAttributes ?? revision.attributesXML)/>",
+                       namespaces: namespaceBindings(for: revision.attributesXML)
+                   ) {
+                    // A mark's own changes come before its formatting.
+                    rPr.insertChild(element, at: 0)
+                }
+                if rPr.children.isEmpty { pPr.removeChild(rPr) }
+            }
             func set(_ name: String, _ attributes: [String: String]?) {
                 pPr.children(named: name).forEach(pPr.removeChild)
                 if let attributes { pPr.insertChild(.word(name, attributes), at: pPr.children.count) }

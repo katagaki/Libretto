@@ -51,6 +51,8 @@ struct FloatingActionBar: View {
 
                         if state.selectedTableID != nil {
                             tableGroup.id(Self.selectionActionsID)
+                        } else if state.isOnChange {
+                            changeGroup.id(Self.selectionActionsID)
                         } else if state.isOnLink {
                             linkGroup.id(Self.selectionActionsID)
                         } else if !state.selectedCommentIDs.isEmpty {
@@ -62,6 +64,7 @@ struct FloatingActionBar: View {
                 .animation(.snappy(duration: 0.2), value: state.selectedTableID)
                 .animation(.snappy(duration: 0.2), value: state.isOnLink)
                 .animation(.snappy(duration: 0.2), value: state.selectedCommentIDs)
+                .animation(.snappy(duration: 0.2), value: state.isOnChange)
             }
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
@@ -123,6 +126,17 @@ struct FloatingActionBar: View {
             action("trash", isOn: false, label: "ActionBar.DeleteTable") {
                 controller?.deleteSelectedTable()
             }
+        }
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    /// Accepting or rejecting the tracked change the selection is on.
+    private var changeGroup: some View {
+        group {
+            action("checkmark", isOn: false, label: "Review.Accept") { controller?.resolveChange(accept: true) }
+                .accessibilityIdentifier("acceptChange")
+            action("xmark", isOn: false, label: "Review.Reject") { controller?.resolveChange(accept: false) }
+            panelAction("pencil.and.list.clipboard", label: "Toolbar.Review", panel: .review)
         }
         .transition(.scale.combined(with: .opacity))
     }

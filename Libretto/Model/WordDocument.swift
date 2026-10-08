@@ -25,6 +25,10 @@ struct WordDocument: Equatable, Sendable {
     /// it had when read, to tell what was added and taken away.
     var comments: [Comment] = []
     var originalComments: [Comment] = []
+    /// Whether changes are recorded as tracked changes, from the settings
+    /// part's `w:trackRevisions`, and whether they were when the file was read.
+    var trackRevisions = false
+    var originalTrackRevisions = false
     /// Body-level elements after the last block, before the section properties.
     var trailingXML: [String] = []
     /// The original package, part by part, for writing back what is not modelled.
@@ -177,6 +181,10 @@ struct Paragraph: Equatable, Sendable, Identifiable {
     /// the content still matches, the paragraph is written back verbatim.
     var originalXML: String?
     var originalInlines: [Inline]?
+    /// A tracked insertion or deletion of the paragraph's mark, from its
+    /// `w:pPr/w:rPr`, and what it was when read.
+    var markRevision: Revision?
+    var originalMarkRevision: Revision?
 
     init(
         id: UUID = UUID(), inlines: [Inline] = [], properties: ParagraphProperties = ParagraphProperties(),
@@ -212,6 +220,7 @@ struct Paragraph: Equatable, Sendable, Identifiable {
         copy.leadingXML = []
         copy.originalXML = nil
         copy.originalInlines = nil
+        copy.originalMarkRevision = nil
         // Paragraph IDs must be unique; Word assigns the copy fresh ones.
         copy.attributesXML = DOCXPatcher.removingParagraphIDs(fromAttributes: attributesXML)
         copy.preservedPropertiesXML = preservedPropertiesXML.flatMap { DOCXPatcher.removingSectionBreak(fromPPr: $0) }
@@ -319,11 +328,17 @@ struct Inline: Equatable, Sendable {
     var content: InlineContent
     var format = RunFormat()
     var hyperlink: Hyperlink?
+    /// The tracked change it is part of, if any.
+    var revision: Revision?
 
-    init(_ content: InlineContent, format: RunFormat = RunFormat(), hyperlink: Hyperlink? = nil) {
+    init(
+        _ content: InlineContent, format: RunFormat = RunFormat(), hyperlink: Hyperlink? = nil,
+        revision: Revision? = nil
+    ) {
         self.content = content
         self.format = format
         self.hyperlink = hyperlink
+        self.revision = revision
     }
 
     var plainText: String {
@@ -377,6 +392,28 @@ struct InlineImage: Equatable, Sendable {
     /// Floating pictures are shown in line, which is the nearest a reflowing
     /// view can come to where they sit on the page.
     var isFloating = false
+}
+
+/// A tracked change: an insertion or deletion of text, or of a paragraph
+/// mark, as `w:ins`, `w:del`, `w:moveTo` or `w:moveFrom` record it.
+struct Revision: Equatable, Hashable, Sendable {
+    enum Kind: String, Sendable {
+        case insertion = "ins"
+        case deletion = "del"
+        case moveTo
+        case moveFrom
+
+        /// Whether accepting it keeps the text, as for an insertion.
+        var adds: Bool { self == .insertion || self == .moveTo }
+    }
+
+    var kind: Kind
+    var author: String?
+    /// As the file spells it, ISO 8601.
+    var date: String?
+    /// The element's attributes as the file spelled them, `w:id` among them;
+    /// empty for a change made in Libretto, which is given an ID when written.
+    var attributesXML = ""
 }
 
 /// A hyperlink wrapping some of a paragraph's runs.

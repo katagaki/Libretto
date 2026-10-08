@@ -44,15 +44,18 @@ final class ParagraphBox: NSObject, Sendable {
 final class RunBox: NSObject, Sendable {
     let format: RunFormat
     let hyperlink: Hyperlink?
+    /// The tracked change the text is part of. On a paragraph mark, the mark's own.
+    let revision: Revision?
 
-    init(_ format: RunFormat, hyperlink: Hyperlink?) {
+    init(_ format: RunFormat, hyperlink: Hyperlink?, revision: Revision? = nil) {
         self.format = format
         self.hyperlink = hyperlink
+        self.revision = revision
     }
 
     override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? RunBox else { return false }
-        return other === self || (other.format == format && other.hyperlink == hyperlink)
+        return other === self || (other.format == format && other.hyperlink == hyperlink && other.revision == revision)
     }
 
     override var hash: Int { format.hashValue }

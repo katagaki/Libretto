@@ -69,6 +69,7 @@ enum DOCXReader {
         }
         let settings = part(ofType: OOXML.settingsType).flatMap { try? XMLLite.parse($0) }
         let evenAndOdd = PropertyReader.isOn(settings?.firstChild(named: "evenAndOddHeaders")) ?? false
+        let tracksRevisions = PropertyReader.isOn(settings?.firstChild(named: "trackRevisions")) ?? false
 
         var document = WordDocument(
             body: blocks, pageSetup: pageSetup, styles: styles, numbering: numbering,
@@ -82,6 +83,8 @@ enum DOCXReader {
             unsupportedFeatures: report
         )
         document.trailingXML = trailing
+        document.trackRevisions = tracksRevisions
+        document.originalTrackRevisions = tracksRevisions
         document.evenAndOddHeaders = evenAndOdd
         document.originalEvenAndOddHeaders = evenAndOdd
         if let comments = part(ofType: OOXML.commentsType).flatMap({ try? XMLLite.parse($0) }) {
@@ -183,11 +186,16 @@ private final class ReadContext {
             paragraph.originalProperties = paragraph.properties
             paragraph.preservedPropertiesXML = serialize(pPr)
             if pPr.firstChild(named: "sectPr") != nil { report.insert(.sections) }
+            if let mark = pPr.firstChild(named: "rPr")?.children
+                .first(where: { Revision.Kind(rawValue: $0.name) != nil }) {
+                paragraph.markRevision = revision(from: mark)
+                paragraph.originalMarkRevision = paragraph.markRevision
+            }
         }
 
         var inlines: [Inline] = []
         for child in element.children {
-            inlines += self.inlines(from: child, hyperlink: nil)
+            inlines += self.inlines(from: child, hyperlink: nil, revision: nil)
         }
         paragraph.inlines = InlineNormalizer.normalized(inlines)
         paragraph.originalInlines = paragraph.inlines
@@ -195,46 +203,56 @@ private final class ReadContext {
         return paragraph
     }
 
-    private func inlines(from child: XMLElement, hyperlink: Hyperlink?) -> [Inline] {
+    private func inlines(from child: XMLElement, hyperlink: Hyperlink?, revision: Revision?) -> [Inline] {
         switch child.name {
         case "pPr":
             return []
         case "r":
-            return run(from: child, hyperlink: hyperlink)
+            return run(from: child, hyperlink: hyperlink, revision: revision)
         case "hyperlink" where hyperlink == nil:
             let link = self.hyperlink(from: child)
-            return child.children.flatMap { inlines(from: $0, hyperlink: link) }
+            return child.children.flatMap { inlines(from: $0, hyperlink: link, revision: revision) }
         case "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd",
              "commentRangeStart", "commentRangeEnd":
-            return marker(child, hyperlink: hyperlink)
-        case "ins", "moveTo", "del", "moveFrom":
-            report.insert(.trackedChanges)
-            let isRemoval = child.name == "del" || child.name == "moveFrom"
-            return token(child, display: isRemoval ? nil : HeaderFooterReader.plainText(of: child), hyperlink: hyperlink)
+            return marker(child, hyperlink: hyperlink, revision: revision)
+        case "ins", "moveTo", "del", "moveFrom" where revision == nil:
+            // A tracked change's runs are content like any other, marked as the change.
+            let change = self.revision(from: child)
+            return child.children.flatMap { inlines(from: $0, hyperlink: hyperlink, revision: change) }
         case "oMath", "oMathPara":
             report.insert(.equations)
-            return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink)
+            return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink, revision: revision)
         case "sdt":
             report.insert(.contentControls)
-            return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink)
+            return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink, revision: revision)
         default:
             // fldSimple, smartTag, customXml and the like: kept whole, shown as their text.
-            return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink)
+            return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink, revision: revision)
         }
     }
 
-    private func marker(_ element: XMLElement, hyperlink: Hyperlink?) -> [Inline] {
-        guard let xml = serialize(element) else { return [] }
-        return [Inline(.paragraphChild(xml: xml, display: nil), hyperlink: hyperlink)]
+    private func revision(from element: XMLElement) -> Revision {
+        Revision(
+            kind: Revision.Kind(rawValue: element.name) ?? .insertion, author: element.attribute("author"),
+            date: element.attribute("date"),
+            attributesXML: element.qualifiedAttributes.filter { !$0.key.hasPrefix("xmlns") }
+                .sorted { $0.key < $1.key }
+                .map { " \($0.key)=\"\(XMLLite.escape($0.value))\"" }.joined()
+        )
     }
 
-    private func token(_ element: XMLElement, display: String?, hyperlink: Hyperlink?) -> [Inline] {
+    private func marker(_ element: XMLElement, hyperlink: Hyperlink?, revision: Revision?) -> [Inline] {
+        guard let xml = serialize(element) else { return [] }
+        return [Inline(.paragraphChild(xml: xml, display: nil), hyperlink: hyperlink, revision: revision)]
+    }
+
+    private func token(_ element: XMLElement, display: String?, hyperlink: Hyperlink?, revision: Revision?) -> [Inline] {
         guard let xml = serialize(element) else { return [] }
         let firstRun = firstDescendant(named: "r", in: element)
         let format = firstRun.flatMap { $0.firstChild(named: "rPr") }.map(runFormat) ?? RunFormat()
         // Shown within its paragraph, so its own line breaks must not end it.
         let shown = display.flatMap { $0.isEmpty ? nil : $0.replacingOccurrences(of: "\n", with: "\u{2028}") }
-        return [Inline(.paragraphChild(xml: xml, display: shown), format: format, hyperlink: hyperlink)]
+        return [Inline(.paragraphChild(xml: xml, display: shown), format: format, hyperlink: hyperlink, revision: revision)]
     }
 
     private func hyperlink(from element: XMLElement) -> Hyperlink {
@@ -252,11 +270,11 @@ private final class ReadContext {
         return RunFormat(style: style, original: style, preservedPropertiesXML: serialize(rPr))
     }
 
-    private func run(from element: XMLElement, hyperlink: Hyperlink?) -> [Inline] {
+    private func run(from element: XMLElement, hyperlink: Hyperlink?, revision: Revision?) -> [Inline] {
         let format = element.firstChild(named: "rPr").map(runFormat) ?? RunFormat()
         var result: [Inline] = []
         func add(_ content: InlineContent) {
-            result.append(Inline(content, format: format, hyperlink: hyperlink))
+            result.append(Inline(content, format: format, hyperlink: hyperlink, revision: revision))
         }
         func keep(_ child: XMLElement, display: String?) {
             guard let xml = serialize(child) else { return }
@@ -267,7 +285,7 @@ private final class ReadContext {
             switch child.name {
             case "rPr", "lastRenderedPageBreak":
                 continue
-            case "t":
+            case "t", "delText":
                 if !child.text.isEmpty { add(.text(child.text)) }
             case "tab":
                 add(.tab)
@@ -770,7 +788,7 @@ enum InlineNormalizer {
         for inline in inlines {
             if case .text(let text) = inline.content, let last = result.last,
                case .text(let previous) = last.content,
-               last.format == inline.format, last.hyperlink == inline.hyperlink {
+               last.format == inline.format, last.hyperlink == inline.hyperlink, last.revision == inline.revision {
                 result[result.count - 1].content = .text(previous + text)
             } else {
                 result.append(inline)

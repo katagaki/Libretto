@@ -63,12 +63,15 @@ struct LibrettoDocument: FileDocument {
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        // Text has no way to track changes; it is saved as it reads with them accepted.
+        var text = document
+        text.body = Revisions.resolve(document.body, accept: true)
         if configuration.contentType.conforms(to: .markdownDocument) {
-            return FileWrapper(regularFileWithContents: MarkdownWriter.data(from: document))
+            return FileWrapper(regularFileWithContents: MarkdownWriter.data(from: text))
         }
         if configuration.contentType.conforms(to: .plainText) || document.sourceLanguage != nil
             || SourceLanguage(contentType: configuration.contentType, filename: nil) != nil {
-            return FileWrapper(regularFileWithContents: PlainText.data(from: document))
+            return FileWrapper(regularFileWithContents: PlainText.data(from: text))
         }
         // A `.docx` cannot hold macros, and Word will not open one that claims to.
         let keepsMacros = configuration.contentType.conforms(to: .macroEnabledDocument)

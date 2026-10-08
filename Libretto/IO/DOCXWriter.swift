@@ -29,6 +29,12 @@ enum DOCXWriter {
         if document.comments != document.originalComments {
             package.writeComments(document.comments, styles: document.styles)
         }
+        if document.trackRevisions != document.originalTrackRevisions {
+            package.editSettings { settings in
+                settings.children(named: "trackRevisions").forEach(settings.removeChild)
+                if document.trackRevisions { settings.insertChild(.word("trackRevisions"), at: settings.children.count) }
+            }
+        }
         if document.evenAndOddHeaders != document.originalEvenAndOddHeaders {
             package.editSettings { settings in
                 settings.children(named: "evenAndOddHeaders").forEach(settings.removeChild)
@@ -74,6 +80,17 @@ enum DOCXWriter {
 struct BodyWriter {
     private(set) var output = ""
     private var pictureID = 1000
+    /// IDs for tracked changes made in Libretto, well above any Word gives out.
+    private var revisionID = 900_000
+
+    /// A tracked change's attributes: as read, or, for one made in Libretto, a new ID with its author and date.
+    private mutating func attributes(of revision: Revision) -> String {
+        guard revision.attributesXML.isEmpty else { return revision.attributesXML }
+        revisionID += 1
+        var result = " w:id=\"\(revisionID)\" w:author=\"\(XMLLite.escape(revision.author ?? ""))\""
+        if let date = revision.date { result += " w:date=\"\(XMLLite.escape(date))\"" }
+        return result
+    }
 
     mutating func write(_ block: Block) {
         output += block.leadingXML.joined()
@@ -88,21 +105,31 @@ struct BodyWriter {
 
     private mutating func write(_ paragraph: Paragraph) {
         if let original = paragraph.originalXML, paragraph.inlines == paragraph.originalInlines,
-           paragraph.properties == paragraph.originalProperties ?? ParagraphProperties() {
+           paragraph.properties == paragraph.originalProperties ?? ParagraphProperties(),
+           paragraph.markRevision == paragraph.originalMarkRevision {
             output += original
             return
         }
         output += "<w:p\(paragraph.attributesXML)>"
-        if let pPr = DOCXPatcher.paragraphPropertiesXML(for: paragraph) { output += pPr }
+        let markAttributes = paragraph.markRevision.map { attributes(of: $0) }
+        if let pPr = DOCXPatcher.paragraphPropertiesXML(for: paragraph, markRevisionAttributes: markAttributes) {
+            output += pPr
+        }
 
         var openLink: Hyperlink?
+        var openRevision: Revision?
         var openRun: RunFormat?
         func closeRun() {
             if openRun != nil { output += "</w:r>" }
             openRun = nil
         }
-        func closeLink() {
+        func closeRevision() {
             closeRun()
+            if let revision = openRevision { output += "</w:\(revision.kind.rawValue)>" }
+            openRevision = nil
+        }
+        func closeLink() {
+            closeRevision()
             if openLink != nil { output += "</w:hyperlink>" }
             openLink = nil
         }
@@ -113,6 +140,13 @@ struct BodyWriter {
                 if let link = inline.hyperlink {
                     output += "<w:hyperlink\(link.attributesXML)>"
                     openLink = link
+                }
+            }
+            if inline.revision != openRevision {
+                closeRevision()
+                if let revision = inline.revision {
+                    output += "<w:\(revision.kind.rawValue)\(attributes(of: revision))>"
+                    openRevision = revision
                 }
             }
             if case .paragraphChild(let xml, _) = inline.content {
@@ -126,14 +160,20 @@ struct BodyWriter {
                 if let rPr = DOCXPatcher.runPropertiesXML(for: inline.format) { output += rPr }
                 openRun = inline.format
             }
-            output += runContent(inline.content)
+            output += runContent(inline.content, isDeleted: openRevision.map { !$0.kind.adds } ?? false)
         }
         closeLink()
         output += "</w:p>"
     }
 
-    private mutating func runContent(_ content: InlineContent) -> String {
+    private mutating func runContent(_ content: InlineContent, isDeleted: Bool = false) -> String {
         switch content {
+        case .text(let text) where isDeleted:
+            return "<w:delText xml:space=\"preserve\">\(XMLLite.escape(text))</w:delText>"
+        case .runChild(let xml, _) where isDeleted:
+            // A deleted field's code is deleted field code.
+            return xml.replacing(#/^<(\w+:)?instrText\b/#) { "<\($0.output.1 ?? "")delInstrText" }
+                .replacing(#/</(\w+:)?instrText>$/#) { "</\($0.output.1 ?? "")delInstrText>" }
         case .text(let text):
             return "<w:t xml:space=\"preserve\">\(XMLLite.escape(text))</w:t>"
         case .tab:
