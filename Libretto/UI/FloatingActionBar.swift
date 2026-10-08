@@ -106,6 +106,10 @@ struct FloatingActionBar: View {
             Button("Insert.Table", systemImage: "tablecells") { state.presentedPanel = .insertTable }
             Button("Insert.Picture", systemImage: "photo") { state.isPickingPhoto = true }
             Button("Insert.Link", systemImage: "link") { state.presentedPanel = .link }
+            Button("Insert.Bookmark", systemImage: "bookmark") {
+                state.navigatorTab = .bookmarks
+                state.presentedPanel = .navigator
+            }
             Button("Insert.PageBreak", systemImage: "doc.on.doc") { controller?.insertPageBreak() }
             Menu("Insert.Breaks", systemImage: "rectangle.split.1x2") {
                 Button("Insert.ColumnBreak") { controller?.insertColumnBreak() }

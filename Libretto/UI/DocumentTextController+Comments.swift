@@ -131,7 +131,7 @@ extension DocumentTextController {
 
     /// Puts markers on the character at `location`, which they come before:
     /// next to it, or before any markers already there.
-    private func attach(_ markers: [Inline], at location: Int, nearText: Bool) {
+    func attach(_ markers: [Inline], at location: Int, nearText: Bool) {
         guard location < storage.length else {
             trailingMarkers = nearText ? trailingMarkers + markers : markers + trailingMarkers
             return

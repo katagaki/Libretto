@@ -367,6 +367,17 @@ enum XMLLite {
         }
         return result
     }
+
+    /// Reads back what `escape` wrote, and the numeric references XML allows.
+    static func unescape(_ value: String) -> String {
+        guard value.contains("&") else { return value }
+        var result = value
+        for (entity, character) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"),
+                                    ("&#10;", "\n"), ("&#13;", "\r"), ("&#9;", "\t")] {
+            result = result.replacingOccurrences(of: entity, with: character)
+        }
+        return result.replacingOccurrences(of: "&amp;", with: "&")
+    }
 }
 
 extension String {

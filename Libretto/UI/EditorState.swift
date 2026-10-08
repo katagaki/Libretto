@@ -12,6 +12,7 @@ enum EditorPanel: String, Identifiable, Hashable {
     case comments
     case review
     case notes
+    case navigator
 
     var id: String { rawValue }
 
@@ -27,6 +28,7 @@ enum EditorPanel: String, Identifiable, Hashable {
         case .comments: return String(localized: "Panel.Comments.Title")
         case .review: return String(localized: "Panel.Review.Title")
         case .notes: return String(localized: "Panel.Notes.Title")
+        case .navigator: return String(localized: "Panel.Navigator.Title")
         }
     }
 }
@@ -159,6 +161,8 @@ final class EditorState {
     var focusedCommentID: String?
     /// The note the notes panel opens to, by `kind:id`.
     var focusedNoteKey: String?
+    /// What the navigation panel shows.
+    var navigatorTab: NavigatorPanel.Tab = .headings
     /// What the last change was, read by the history when it records it.
     var pendingScope: EditScope = .other
     var errorMessage: String?

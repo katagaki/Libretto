@@ -190,6 +190,7 @@ struct DocumentView: View {
         case .comments: CommentsPanel(document: wordDocument, state: state)
         case .review: ReviewPanel(document: wordDocument, state: state)
         case .notes: NotesPanel(document: wordDocument, state: state)
+        case .navigator: NavigatorPanel(document: wordDocument, state: state)
         }
     }
 
@@ -241,6 +242,11 @@ struct DocumentView: View {
                         .accessibilityIdentifier("review")
                     Button("Toolbar.Notes", systemImage: "text.append") { openPanel(.notes) }
                         .accessibilityIdentifier("notes")
+                    Button("Toolbar.Navigator", systemImage: "list.bullet.indent") {
+                        state.navigatorTab = .headings
+                        openPanel(.navigator)
+                    }
+                    .accessibilityIdentifier("navigator")
                 }
                 if !document.unsupportedFeatures.isEmpty {
                     Button("Toolbar.UnsupportedFeatures.Label", systemImage: "exclamationmark.triangle") {
