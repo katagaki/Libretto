@@ -729,6 +729,66 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         }
     }
 
+    /// Puts the selected paragraphs in a new list of a preset's bullets or numbering, keeping their levels.
+    func applyListPreset(_ preset: ListPreset) {
+        let styles = document.styles
+        let id = document.numbering.addList(levels: preset.levels, kind: preset.kind)
+        refreshContext()
+        editParagraphs(scope: .list) { properties in
+            let level = Typography.listReference(styles.resolvedParagraphProperties(properties))?.level ?? 0
+            properties.list = ListReference(numberingID: id, level: level)
+        }
+    }
+
+    /// Starts the list the selection is in over, at `start`, from its paragraph on.
+    func restartNumbering(at start: Int = 1) {
+        let range = paragraphRange(at: textView.selectedRange.location)
+        let resolved = document.styles.resolvedParagraphProperties(paragraphModel(for: range).properties)
+        guard let list = Typography.listReference(resolved),
+              let restarted = document.numbering.restartList(list.numberingID, level: list.level, at: start) else { return }
+        refreshContext()
+        moveList(from: range.location, numberingID: list.numberingID, to: restarted)
+    }
+
+    /// Carries on the numbering of the list of the same kind before the one the selection is in.
+    func continueNumbering() {
+        let range = paragraphRange(at: textView.selectedRange.location)
+        let styles = document.styles
+        guard let list = Typography.listReference(styles.resolvedParagraphProperties(paragraphModel(for: range).properties)),
+              let kind = document.numbering.kind(of: list.numberingID) else { return }
+        var location = range.location
+        while location > 0 {
+            let previous = paragraphRange(at: location - 1)
+            location = previous.location
+            guard !isBlockLine(previous),
+                  let other = Typography.listReference(styles.resolvedParagraphProperties(paragraphModel(for: previous).properties)),
+                  other.numberingID != list.numberingID, document.numbering.kind(of: other.numberingID) == kind else { continue }
+            moveList(from: range.location, numberingID: list.numberingID, to: other.numberingID)
+            return
+        }
+    }
+
+    /// Moves the paragraphs of a list, from `location` on, into another list.
+    private func moveList(from location: Int, numberingID old: Int, to new: Int) {
+        let styles = document.styles
+        var current = location
+        storage.beginEditing()
+        while current < storage.length {
+            let range = paragraphRange(at: current)
+            guard range.length > 0 else { break }
+            current = NSMaxRange(range)
+            guard !isBlockLine(range) else { continue }
+            var paragraph = paragraphModel(for: range)
+            guard let list = Typography.listReference(styles.resolvedParagraphProperties(paragraph.properties)),
+                  list.numberingID == old else { continue }
+            paragraph.properties.list = ListReference(numberingID: new, level: list.level)
+            storage.addAttribute(.librettoParagraph, value: ParagraphBox(paragraph), range: range)
+            if !hasMark(range) { finalParagraph = paragraph }
+        }
+        storage.endEditing()
+        commit(restyling: NSRange(location: location, length: storage.length - location), scope: .list)
+    }
+
     private func toggleList(kindOf resolved: ParagraphProperties) {
         guard let list = Typography.listReference(resolved), let kind = document.numbering.kind(of: list.numberingID)
         else { return }

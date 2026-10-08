@@ -150,6 +150,43 @@ struct FormattingTests {
         #expect(whole.plainText == long)
     }
 
+    private func labels(_ document: WordDocument) -> [String] {
+        var labeler = ListLabeler(context: RenderContext(document: document, scheme: .light, images: ImageStore()))
+        return document.body.compactMap { block in
+            guard case .paragraph(let paragraph) = block else { return nil }
+            return labeler.label(for: paragraph.properties)?.text
+        }
+    }
+
+    @Test("Lists take a preset's numbering, start over where asked, and carry on another list's")
+    func lists() throws {
+        var document = WordDocument()
+        document.body = ["One", "Two", "Three", "Aside", "Four"].map { .paragraph(Paragraph(text: $0)) }
+        let controller = DocumentTextController(document: document, scheme: .light)
+        var latest: WordDocument?
+        controller.onChange = { latest = $0 }
+        controller.textView.selectedRange = NSRange(location: 0, length: 13)
+        controller.applyListPreset(.upperRoman)
+        #expect(labels(try #require(latest)) == ["I.", "II.", "III."])
+
+        controller.textView.selectedRange = NSRange(location: 8, length: 0)
+        controller.restartNumbering(at: 5)
+        #expect(labels(try #require(latest)) == ["I.", "II.", "V."])
+
+        // "Four", in a list of its own, carries on the first.
+        controller.textView.selectedRange = NSRange(location: 21, length: 0)
+        controller.applyListPreset(.decimal)
+        controller.continueNumbering()
+        let continued = try #require(latest)
+        #expect(labels(continued) == ["I.", "II.", "V.", "VI."])
+
+        let parts = try ZipArchive.entries(in: DOCXWriter.data(from: continued))
+        let numbering = String(decoding: try #require(parts["word/numbering.xml"]), as: UTF8.self)
+        #expect(numbering.contains("<w:lvlOverride w:ilvl=\"0\"><w:startOverride w:val=\"5\"/></w:lvlOverride>"))
+        #expect(labels(try DOCXReader.document(fromParts: parts)) == ["I.", "II.", "V.", "VI."])
+        #expect(ListPreset.legal.sample == "1.  1.1.  1.1.1.")
+    }
+
     @Test("Text in capitals is drawn with capital glyphs, and keeps its letters")
     func allCaps() throws {
         let (controller, _, latest) = makeController(text: "abc")

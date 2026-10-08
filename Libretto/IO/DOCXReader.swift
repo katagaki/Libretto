@@ -672,6 +672,12 @@ enum StyleReader {
                   let abstract = instance.firstChild(named: "abstractNumId")?.attribute("val").flatMap({ Int($0) })
             else { continue }
             result.instances[id] = abstract
+            for override in instance.children(named: "lvlOverride") {
+                guard let level = override.attribute("ilvl").flatMap({ Int($0) }),
+                      let start = override.firstChild(named: "startOverride")?.attribute("val").flatMap({ Int($0) })
+                else { continue }
+                result.overrides[id, default: [:]][level] = start
+            }
         }
         return result
     }

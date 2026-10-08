@@ -239,6 +239,9 @@ struct NumberingDefinitions: Equatable, Sendable {
     /// `w:num` instances: numbering ID to the abstract definition it uses.
     var instances: [Int: Int] = [:]
     var abstracts: [Int: [Int: ListLevel]] = [:]
+    /// Where an instance starts its levels over, from `w:lvlOverride/w:startOverride`:
+    /// numbering ID to level to the number it starts at.
+    var overrides: [Int: [Int: Int]] = [:]
     /// Lists Libretto created, to be added to the numbering part on save.
     var added: [AddedList] = []
 
@@ -256,6 +259,9 @@ struct NumberingDefinitions: Equatable, Sendable {
         var numberingID: Int
         var abstractID: Int
         var kind: ListKind
+        /// Whether the abstract definition is new too, rather than one this
+        /// instance numbers afresh.
+        var isNewDefinition = true
     }
 
     func level(_ level: Int, of numberingID: Int) -> ListLevel? {
@@ -276,12 +282,27 @@ struct NumberingDefinitions: Equatable, Sendable {
 
     /// A new list of `kind`, numbered from its own start.
     mutating func addList(_ kind: ListKind) -> Int {
+        addList(levels: Self.levels(for: kind), kind: kind)
+    }
+
+    /// A new list with its own definition.
+    mutating func addList(levels: [Int: ListLevel], kind: ListKind) -> Int {
         let numberingID = (instances.keys.max() ?? 0) + 1
         let abstractID = (abstracts.keys.max() ?? -1) + 1
         instances[numberingID] = abstractID
-        abstracts[abstractID] = Self.levels(for: kind)
+        abstracts[abstractID] = levels
         added.append(AddedList(numberingID: numberingID, abstractID: abstractID, kind: kind))
         return numberingID
+    }
+
+    /// A new instance of an existing list's definition, starting `level` over at `start`.
+    mutating func restartList(_ numberingID: Int, level: Int, at start: Int) -> Int? {
+        guard let abstractID = instances[numberingID], let kind = kind(of: numberingID) else { return nil }
+        let restarted = (instances.keys.max() ?? 0) + 1
+        instances[restarted] = abstractID
+        overrides[restarted] = [level: start]
+        added.append(AddedList(numberingID: restarted, abstractID: abstractID, kind: kind, isNewDefinition: false))
+        return restarted
     }
 
     static func levels(for kind: ListKind) -> [Int: ListLevel] {

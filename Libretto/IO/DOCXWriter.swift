@@ -494,6 +494,19 @@ private struct PackageEditor {
         edit(path) { root in
             let namespaces = ["w": root.sourceNamespaceBinding(forPrefix: "w") ?? OOXML.wordNamespace]
             for list in numbering.added {
+                let overrides = (numbering.overrides[list.numberingID] ?? [:]).sorted { $0.key < $1.key }.map { level, start in
+                    "<w:lvlOverride w:ilvl=\"\(level)\"><w:startOverride w:val=\"\(start)\"/></w:lvlOverride>"
+                }.joined()
+                let instance = """
+                    <w:num w:numId="\(list.numberingID)"><w:abstractNumId w:val="\(list.abstractID)"/>\(overrides)</w:num>
+                    """
+                if !list.isNewDefinition {
+                    if let element = XMLLite.fragment(instance, namespaces: namespaces) {
+                        let index = root.children.firstIndex { $0.name == "numIdMacAtCleanup" }
+                        root.insertChild(element, at: index ?? root.children.count)
+                    }
+                    continue
+                }
                 let levels = (numbering.abstracts[list.abstractID] ?? [:]).sorted { $0.key < $1.key }.map { index, level in
                     """
                     <w:lvl w:ilvl="\(index)"><w:start w:val="\(level.start)"/><w:numFmt w:val="\(level.format)"/>\
@@ -504,9 +517,6 @@ private struct PackageEditor {
                 let abstract = """
                     <w:abstractNum w:abstractNumId="\(list.abstractID)">\
                     <w:multiLevelType w:val="hybridMultilevel"/>\(levels)</w:abstractNum>
-                    """
-                let instance = """
-                    <w:num w:numId="\(list.numberingID)"><w:abstractNumId w:val="\(list.abstractID)"/></w:num>
                     """
                 // Abstract definitions all come before the first instance.
                 if let element = XMLLite.fragment(abstract, namespaces: namespaces) {

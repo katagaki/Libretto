@@ -296,6 +296,13 @@ struct ParagraphPanel: View {
                 }
                 .buttonStyle(.borderless)
 
+                NavigationLink {
+                    ListStyleList(state: state)
+                } label: {
+                    Text("List.Title")
+                }
+                .accessibilityIdentifier("listStyles")
+
                 LabeledContent("Paragraph.Indent") {
                     HStack(spacing: 16) {
                         Button { controller?.indent(by: -1) } label: { Image(systemName: "decrease.indent") }

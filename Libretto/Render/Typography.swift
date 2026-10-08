@@ -300,6 +300,8 @@ struct ListLabeler {
     /// Per abstract list, the current count at each level. Lists that share
     /// an abstract definition share their count.
     private var counters: [Int: [Int: Int]] = [:]
+    /// Instances already met, whose overrides, if any, have started their levels over.
+    private var started: Set<Int> = []
 
     init(context: RenderContext) {
         self.context = context
@@ -313,6 +315,13 @@ struct ListLabeler {
               let level = context.numbering.level(list.level, of: list.numberingID) else { return nil }
 
         var counts = counters[abstract] ?? [:]
+        if started.insert(list.numberingID).inserted, let restarts = context.numbering.overrides[list.numberingID] {
+            // An instance that starts over does so at its first paragraph.
+            for (restarted, start) in restarts {
+                counts[restarted] = start - 1
+                for deeper in counts.keys where deeper > restarted { counts[deeper] = nil }
+            }
+        }
         counts[list.level] = (counts[list.level] ?? (level.start - 1)) + 1
         // Moving up a level starts the levels below it over.
         for deeper in counts.keys where deeper > list.level { counts[deeper] = nil }

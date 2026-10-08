@@ -270,6 +270,14 @@ S = {
  "DropCap.drop": ["Dropped", "本文内に表示", "본문", "下沉", "繞排"],
  "DropCap.margin": ["In Margin", "余白に表示", "여백", "悬挂", "邊界"],
  "Paragraph.DropCap.Lines": ["Lines to Drop: %d", "ドロップする行数：%d", "놓을 줄 수: %d", "下沉行数：%d", "放大行數：%d"],
+ "List.Title": ["Bullets & Numbering", "箇条書きと段落番号", "글머리 기호 및 번호 매기기", "项目符号和编号", "項目符號及編號"],
+ "List.Section.Bullets": ["Bullets", "箇条書き", "글머리 기호", "项目符号", "項目符號"],
+ "List.Section.Numbering": ["Numbering", "段落番号", "번호 매기기", "编号", "編號"],
+ "List.Section.Multilevel": ["Multilevel", "アウトライン", "다단계", "多级列表", "多層次清單"],
+ "List.Section.Numbers": ["Numbering Value", "番号の値", "번호 값", "编号值", "編號值"],
+ "List.StartAt": ["Start At: %d", "開始番号：%d", "시작 번호: %d", "起始编号：%d", "起始值：%d"],
+ "List.Restart": ["Restart Numbering", "番号を振り直す", "번호 다시 매기기", "重新开始编号", "重新編號"],
+ "List.Continue": ["Continue Numbering", "番号を継続する", "번호 계속 매기기", "继续编号", "繼續編號"],
 }
 
 reuse = ["Alert.Error.Title", "Common.OK", "Format.ClearAll", "Format.Section.Text", "Format.Text.Size",
