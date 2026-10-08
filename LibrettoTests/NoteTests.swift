@@ -81,6 +81,23 @@ struct NoteTests {
         #expect(NoteNumbering.references(in: reread.body).count == 2)
     }
 
+    @Test("The page a footnote is referred to on keeps room at its foot for it")
+    func footOfPage() throws {
+        let (controller, latest) = makeController(text: "A claim.")
+        controller.textView.selectedRange = NSRange(location: 8, length: 0)
+        let key = controller.insertNote(.footnote)
+        var document = try #require(latest())
+        let index = try #require(document.notes.firstIndex { $0.key == key })
+        document.notes[index].text = "The source."
+        controller.update(document: document, scheme: .light)
+
+        let notes = try #require(controller.layoutManager.notesByPage[0])
+        #expect(notes.map(\.string) == ["1 The source."])
+        #expect((controller.layoutManager.noteHeights[0] ?? 0) > PageLayoutManager.noteSeparatorSpace)
+        // The PDF draws them too, on its one page.
+        #expect(!PDFExporter.data(from: document).isEmpty)
+    }
+
     @Test("Deleting a reference takes its note, and the rest renumber")
     func deletes() throws {
         let (controller, latest) = makeController(text: "A B")

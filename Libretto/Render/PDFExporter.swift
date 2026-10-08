@@ -14,6 +14,7 @@ enum PDFExporter {
         }
         let layoutManager = PageLayoutManager(geometry: geometry)
         layoutManager.styles = document.styles
+        layoutManager.footnotes = NoteLayout.notes(in: storage, document: document, context: context)
         let container = NSTextContainer()
         layoutManager.addTextContainer(container)
         storage.addLayoutManager(layoutManager)
@@ -41,6 +42,12 @@ enum PDFExporter {
                 HeaderFooterDrawing.draw(
                     document: document, page: page, of: pages, geometry: geometry, color: .darkGray
                 )
+                if let notes = layoutManager.notesByPage[page], let height = layoutManager.noteHeights[page] {
+                    PageLayoutManager.drawNotes(notes, in: CGRect(
+                        x: geometry.margins.left, y: geometry.margins.top + geometry.contentHeight - height,
+                        width: geometry.contentWidth, height: height
+                    ), color: .black)
+                }
             }
         }
     }

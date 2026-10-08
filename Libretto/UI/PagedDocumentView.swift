@@ -15,6 +15,7 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
     private var geometry: PageGeometry?
     private var pages = 0
     private var texts = WordDocumentHeaderFooter()
+    private var notes = PageNotes()
     /// Until the user pinches, the pages are kept fitted to the width.
     private var fitsWidth = true
     private var lastWidth: CGFloat = 0
@@ -48,12 +49,13 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
 
     // MARK: - Pages
 
-    func update(geometry: PageGeometry, pages: Int, texts: WordDocumentHeaderFooter) {
+    func update(geometry: PageGeometry, pages: Int, texts: WordDocumentHeaderFooter, notes: PageNotes = PageNotes()) {
         let changed = geometry != self.geometry
-        guard changed || pages != self.pages || texts != self.texts else { return }
+        guard changed || pages != self.pages || texts != self.texts || notes != self.notes else { return }
         self.geometry = geometry
         self.pages = pages
         self.texts = texts
+        self.notes = notes
         if changed { fitsWidth = true }
 
         while pageViews.count < pages {
@@ -86,6 +88,7 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
         for (index, page) in pageViews.enumerated() {
             page.frame = geometry.pageFrame(index).offsetBy(dx: Self.inset, dy: Self.inset)
             page.configure(texts, page: index, of: pages, geometry: geometry)
+            page.configureNotes(notes.byPage[index] ?? [], height: notes.heights[index] ?? 0, geometry: geometry)
         }
         textView.frame = CGRect(
             x: Self.inset + geometry.margins.left, y: Self.inset + geometry.margins.top,
@@ -219,9 +222,38 @@ struct WordDocumentHeaderFooter: Equatable {
 }
 
 /// One sheet of paper, with its header and footer drawn in the margins.
+/// The notes each page sets at its foot, and the room they take.
+struct PageNotes: Equatable {
+    var byPage: [Int: [NSAttributedString]] = [:]
+    var heights: [Int: CGFloat] = [:]
+}
+
+/// A page's footnotes, under a short rule.
+private final class NotesView: UIView {
+    var notes: [NSAttributedString] = [] {
+        didSet { if notes != oldValue { setNeedsDisplay() } }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        backgroundColor = .clear
+        contentMode = .redraw
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func draw(_ rect: CGRect) {
+        PageLayoutManager.drawNotes(notes, in: bounds, color: .label)
+    }
+}
+
 final class PageBackgroundView: UIView {
     private let headerLabel = UILabel()
     private let footerLabel = UILabel()
+    private let notesView = NotesView()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -236,6 +268,16 @@ final class PageBackgroundView: UIView {
             label.numberOfLines = 0
             addSubview(label)
         }
+        addSubview(notesView)
+    }
+
+    func configureNotes(_ notes: [NSAttributedString], height: CGFloat, geometry: PageGeometry) {
+        notesView.isHidden = notes.isEmpty
+        notesView.notes = notes
+        notesView.frame = CGRect(
+            x: geometry.margins.left, y: geometry.margins.top + geometry.contentHeight - height,
+            width: geometry.contentWidth, height: height
+        )
     }
 
     required init?(coder: NSCoder) {

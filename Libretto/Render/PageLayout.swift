@@ -39,8 +39,11 @@ struct PageGeometry: Equatable {
     var pitch: CGFloat { pageSize.height + gap }
 
     /// The band between page `index`'s text and the next page's.
-    func band(after index: Int) -> CGRect {
-        CGRect(x: -1, y: CGFloat(index) * pitch + contentHeight, width: contentWidth + 2, height: pitch - contentHeight)
+    func band(after index: Int, reserving reserve: CGFloat = 0) -> CGRect {
+        CGRect(
+            x: -1, y: CGFloat(index) * pitch + contentHeight - reserve, width: contentWidth + 2,
+            height: pitch - contentHeight + reserve
+        )
     }
 
     func page(containing y: CGFloat) -> Int {
@@ -87,13 +90,88 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     func configure(_ container: NSTextContainer, pages: Int) {
         container.size = CGSize(width: geometry.contentWidth, height: geometry.totalHeight(pages: pages + 1))
         container.lineFragmentPadding = 0
-        container.exclusionPaths = (0..<pages).map { UIBezierPath(rect: geometry.band(after: $0)) }
+        container.exclusionPaths = (0..<pages).map {
+            UIBezierPath(rect: geometry.band(after: $0, reserving: noteHeights[$0] ?? 0))
+        }
     }
 
-    /// Lays everything out, adding pages until the text fits, and returns
-    /// how many it takes.
+    // MARK: - Footnotes
+
+    /// Notes to set at the foot of the page their reference falls on: where
+    /// the reference is in the text, and the note as it is drawn.
+    var footnotes: [(location: Int, text: NSAttributedString)] = []
+    /// What each page keeps clear at its foot for its notes, and the notes.
+    private(set) var noteHeights: [Int: CGFloat] = [:]
+    private(set) var notesByPage: [Int: [NSAttributedString]] = [:]
+
+    /// Space between the text and a page's notes, where the separator is drawn.
+    static let noteSeparatorSpace: CGFloat = 12
+
+    /// Lays everything out, adding pages until the text fits, and making
+    /// room at the foot of each page for the notes referred to on it.
+    /// Returns how many pages it takes.
+    ///
+    /// Room made for notes can push a reference on to the next page, so the
+    /// notes are placed again until they settle, a few times at most.
     @discardableResult
     func layOutPages(in container: NSTextContainer, startingWith estimate: Int) -> Int {
+        var pages = layOutText(in: container, startingWith: estimate)
+        guard !footnotes.isEmpty || !noteHeights.isEmpty else {
+            notesByPage = [:]
+            return pages
+        }
+        for _ in 0..<4 {
+            let placed = placeNotes()
+            notesByPage = placed.byPage
+            guard placed.heights != noteHeights else { break }
+            noteHeights = placed.heights
+            configure(container, pages: pages)
+            pages = layOutText(in: container, startingWith: pages)
+        }
+        return pages
+    }
+
+    private func placeNotes() -> (byPage: [Int: [NSAttributedString]], heights: [Int: CGFloat]) {
+        guard let storage = textStorage else { return ([:], [:]) }
+        var byPage: [Int: [NSAttributedString]] = [:]
+        for note in footnotes where note.location < storage.length {
+            let glyph = glyphIndexForCharacter(at: note.location)
+            guard glyph < numberOfGlyphs else { continue }
+            let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            byPage[geometry.page(containing: line.midY), default: []].append(note.text)
+        }
+        let heights = byPage.mapValues { texts in
+            let height = texts.reduce(Self.noteSeparatorSpace) { total, text in
+                total + ceil(text.boundingRect(
+                    with: CGSize(width: geometry.contentWidth, height: .greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil
+                ).height) + 2
+            }
+            // Never so much that the page has no room left for its own text.
+            return min(height, geometry.contentHeight * 0.6)
+        }
+        return (byPage, heights)
+    }
+
+    /// Draws a page's notes at its foot, under a short rule.
+    static func drawNotes(_ notes: [NSAttributedString], in frame: CGRect, color: UIColor) {
+        guard !notes.isEmpty else { return }
+        color.withAlphaComponent(0.5).setFill()
+        UIRectFill(CGRect(x: frame.minX, y: frame.minY + noteSeparatorSpace / 2 - 0.25, width: min(144, frame.width / 3), height: 0.5))
+        var y = frame.minY + noteSeparatorSpace
+        for text in notes {
+            let rect = CGRect(x: frame.minX, y: y, width: frame.width, height: frame.maxY - y)
+            text.draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine], context: nil)
+            y += ceil(text.boundingRect(
+                with: CGSize(width: frame.width, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil
+            ).height) + 2
+            if y >= frame.maxY { break }
+        }
+    }
+
+    /// The text, laid out on as many pages as it takes.
+    private func layOutText(in container: NSTextContainer, startingWith estimate: Int) -> Int {
         var pages = max(1, estimate)
         if container.exclusionPaths.count != pages { configure(container, pages: pages) }
         ensureLayout(for: container)

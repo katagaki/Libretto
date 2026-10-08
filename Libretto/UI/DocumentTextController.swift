@@ -93,8 +93,12 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
 
     func relayout() {
         refreshCommentRanges()
+        layoutManager.footnotes = NoteLayout.notes(in: storage, document: document, context: context)
         pageCount = layoutManager.layOutPages(in: container, startingWith: pageCount)
-        view.update(geometry: geometry, pages: pageCount, texts: WordDocumentHeaderFooter(document: document))
+        view.update(
+            geometry: geometry, pages: pageCount, texts: WordDocumentHeaderFooter(document: document),
+            notes: PageNotes(byPage: layoutManager.notesByPage, heights: layoutManager.noteHeights)
+        )
     }
 
     /// Takes a document from the owner, rendering it if it is not the one
@@ -105,6 +109,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         let needsRender = newScheme != scheme || newGeometry != geometry || new.body != lastBody
             || new.styles != document.styles || new.numbering != document.numbering
         let marginsChanged = WordDocumentHeaderFooter(document: new) != WordDocumentHeaderFooter(document: document)
+            || new.notes != document.notes
         if needsRender {
             // The document's own version wins over typing not yet handed over.
             syncTask?.cancel()
