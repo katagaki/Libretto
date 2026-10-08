@@ -170,9 +170,19 @@ enum DOCXPatcher {
             if new.isItalic != old.isItalic { set(["i", "iCs"], toggle(new.isItalic)) }
             if new.isStruckThrough != old.isStruckThrough { set(["strike"], toggle(new.isStruckThrough)) }
             if new.allCaps != old.allCaps { set(["caps"], toggle(new.allCaps)) }
-            if new.underline != old.underline {
-                set(["u"], new.underline.map { ["val": $0 ? "single" : "none"] })
+            if new.underline != old.underline || new.underlineStyle != old.underlineStyle {
+                set(["u"], new.underline.map { ["val": $0 ? new.underlineStyle ?? "single" : "none"] })
             }
+            if new.isDoubleStruckThrough != old.isDoubleStruckThrough { set(["dstrike"], toggle(new.isDoubleStruckThrough)) }
+            if new.smallCaps != old.smallCaps { set(["smallCaps"], toggle(new.smallCaps)) }
+            if new.outline != old.outline { set(["outline"], toggle(new.outline)) }
+            if new.shadow != old.shadow { set(["shadow"], toggle(new.shadow)) }
+            if new.emboss != old.emboss { set(["emboss"], toggle(new.emboss)) }
+            if new.imprint != old.imprint { set(["imprint"], toggle(new.imprint)) }
+            if new.characterSpacing != old.characterSpacing {
+                set(["spacing"], new.characterSpacing.map { ["val": String($0)] })
+            }
+            if new.position != old.position { set(["position"], new.position.map { ["val": String($0)] }) }
             if new.colorHex != old.colorHex { set(["color"], new.colorHex.map { ["val": $0] }) }
             if new.fontSize != old.fontSize { set(["sz", "szCs"], new.fontSize.map { ["val": String($0)] }) }
             if new.highlight != old.highlight { set(["highlight"], new.highlight.map { ["val": $0] }) }

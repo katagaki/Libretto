@@ -203,6 +203,56 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return pages
     }
 
+    // MARK: - Capitals
+
+    /// Text in capitals keeps its letters as typed; it is drawn with the
+    /// glyphs of their capitals.
+    func layoutManager(
+        _ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+        properties: UnsafePointer<NSLayoutManager.GlyphProperty>, characterIndexes: UnsafePointer<Int>,
+        font: UIFont, forGlyphRange glyphRange: NSRange
+    ) -> Int {
+        guard let storage = textStorage, glyphRange.length > 0 else { return 0 }
+        let first = characterIndexes[0]
+        let last = characterIndexes[glyphRange.length - 1]
+        guard first < storage.length else { return 0 }
+        var hasCaps = false
+        storage.enumerateAttribute(
+            .librettoAllCaps, in: NSRange(location: first, length: min(storage.length, last + 1) - first)
+        ) { value, _, stop in
+            if value != nil {
+                hasCaps = true
+                stop.pointee = true
+            }
+        }
+        guard hasCaps else { return 0 }
+        let string = storage.string as NSString
+        var replaced = Array(UnsafeBufferPointer(start: glyphs, count: glyphRange.length))
+        var changed = false
+        for offset in 0..<glyphRange.length {
+            let index = characterIndexes[offset]
+            guard index < storage.length, storage.attribute(.librettoAllCaps, at: index, effectiveRange: nil) != nil,
+                  let scalar = UnicodeScalar(string.character(at: index)),
+                  CharacterSet.lowercaseLetters.contains(scalar) else { continue }
+            let upper = Array(String(Character(scalar)).uppercased().utf16)
+            guard upper.count == 1 else { continue }
+            var unit = upper[0]
+            var glyph = CGGlyph()
+            if CTFontGetGlyphsForCharacters(font as CTFont, &unit, &glyph, 1) {
+                replaced[offset] = glyph
+                changed = true
+            }
+        }
+        guard changed else { return 0 }
+        replaced.withUnsafeBufferPointer { buffer in
+            layoutManager.setGlyphs(
+                buffer.baseAddress!, properties: properties, characterIndexes: characterIndexes, font: font,
+                forGlyphRange: glyphRange
+            )
+        }
+        return glyphRange.length
+    }
+
     // MARK: - Page breaks
 
     func layoutManager(

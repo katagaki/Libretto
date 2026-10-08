@@ -70,11 +70,67 @@ struct FormatPanel: View {
                 HighlightSwatches(selected: format.highlight) { controller?.setHighlight($0) }
             }
 
+            Section("Format.Section.Effects") {
+                Picker("Format.Underline", selection: Binding(
+                    get: { format.underlineKind },
+                    set: { controller?.setUnderline($0) }
+                )) {
+                    ForEach(underlineKinds, id: \.self) { kind in
+                        Text(LocalizedStringKey("Underline.\(kind)")).tag(kind)
+                    }
+                }
+                .accessibilityIdentifier("underlineKind")
+                effect("Format.DoubleStrikethrough", \.isDoubleStruckThrough, isOn: format.isDoubleStruckThrough)
+                effect("Format.SmallCaps", \.smallCaps, isOn: format.smallCaps)
+                effect("Format.AllCaps", \.allCaps, isOn: format.allCaps)
+                effect("Format.Outline", \.outline, isOn: format.outline)
+                effect("Format.Shadow", \.shadow, isOn: format.shadow)
+                effect("Format.Emboss", \.emboss, isOn: format.emboss)
+                effect("Format.Engrave", \.imprint, isOn: format.imprint)
+                Stepper(
+                    Self.spacingLabel(format.characterSpacing),
+                    onIncrement: { controller?.setCharacterSpacing(format.characterSpacing + 10) },
+                    onDecrement: { controller?.setCharacterSpacing(format.characterSpacing - 10) }
+                )
+                .accessibilityIdentifier("characterSpacing")
+                Stepper(
+                    Self.positionLabel(format.position),
+                    onIncrement: { controller?.setPosition(format.position + 2) },
+                    onDecrement: { controller?.setPosition(format.position - 2) }
+                )
+            }
+
             Section {
                 Button("Format.ClearAll", role: .destructive) { controller?.clearFormatting() }
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// The underlines the picker offers, with the selection's own if it is another.
+    private var underlineKinds: [String] {
+        let kinds = ["none", "single", "double", "thick", "dotted", "dash", "dotDash", "wave", "words"]
+        return kinds.contains(format.underlineKind) ? kinds : kinds + [format.underlineKind]
+    }
+
+    private func effect(_ label: LocalizedStringKey, _ key: WritableKeyPath<RunStyle, Bool?>, isOn: Bool) -> some View {
+        Toggle(label, isOn: Binding(get: { isOn }, set: { controller?.setEffect(key, $0) }))
+    }
+
+    private static func pointsLabel(_ points: Double) -> String {
+        points.formatted(.number.precision(.fractionLength(0...1)))
+    }
+
+    static func spacingLabel(_ twips: Int) -> String {
+        if twips == 0 { return String(localized: "Format.Spacing.Normal") }
+        let points = pointsLabel(Double(abs(twips)) / 20)
+        return String(format: String(localized: twips > 0 ? "Format.Spacing.Expanded" : "Format.Spacing.Condensed"), points)
+    }
+
+    static func positionLabel(_ halfPoints: Int) -> String {
+        if halfPoints == 0 { return String(localized: "Format.Position.Normal") }
+        let points = pointsLabel(Double(abs(halfPoints)) / 2)
+        return String(format: String(localized: halfPoints > 0 ? "Format.Position.Raised" : "Format.Position.Lowered"), points)
     }
 
     /// The selection's font by name, the theme's by its role.

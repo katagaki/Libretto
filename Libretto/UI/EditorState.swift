@@ -102,6 +102,19 @@ struct SelectionFormat: Equatable {
     var fontSize = 22
     /// The font the text resolves to, a theme font as `+minor` or `+major`.
     var fontName: String?
+    /// `w:u`'s kind: `none` when not underlined, `single`, `double` and the rest.
+    var underlineKind = "none"
+    var isDoubleStruckThrough = false
+    var smallCaps = false
+    var allCaps = false
+    var outline = false
+    var shadow = false
+    var emboss = false
+    var imprint = false
+    /// Twentieths of a point.
+    var characterSpacing = 0
+    /// Half-points.
+    var position = 0
     var colorHex: String?
     var highlight: String?
     var alignment: ParagraphAlignment = .leading

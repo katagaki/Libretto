@@ -75,12 +75,41 @@ enum Typography {
             hex: style.colorHex ?? (backgroundHex != nil ? "000000" : nil), on: backgroundHex, for: context.scheme
         ) ?? context.defaultTextColor
 
-        if style.underline == true { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        if style.underline == true { attributes[.underlineStyle] = underline(style.underlineStyle).rawValue }
         if style.isStruckThrough == true { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+        if style.isDoubleStruckThrough == true { attributes[.strikethroughStyle] = NSUnderlineStyle.double.rawValue }
         switch style.verticalAlignment {
         case .superscript: attributes[.baselineOffset] = font.pointSize * 0.5
         case .subscript: attributes[.baselineOffset] = -font.pointSize * 0.25
         default: break
+        }
+        if let position = style.position, position != 0 {
+            attributes[.baselineOffset] = (attributes[.baselineOffset] as? CGFloat ?? 0) + CGFloat(position) / 2 * fontScale
+        }
+        if style.allCaps == true { attributes[.librettoAllCaps] = true }
+        if let spacing = style.characterSpacing, spacing != 0 {
+            attributes[.kern] = CGFloat(spacing) / 20 * fontScale
+        }
+        let ink = attributes[.foregroundColor] as? UIColor ?? context.defaultTextColor
+        if style.outline == true {
+            // Hollow letters: a positive stroke width draws the outline alone.
+            attributes[.strokeWidth] = 3.0
+            attributes[.strokeColor] = ink
+        }
+        if style.shadow == true {
+            let shadow = NSShadow()
+            shadow.shadowOffset = CGSize(width: 1, height: 1)
+            shadow.shadowBlurRadius = 1
+            shadow.shadowColor = ink.withAlphaComponent(0.45)
+            attributes[.shadow] = shadow
+        } else if style.emboss == true || style.imprint == true {
+            // Raised or pressed in: a light edge on one side of the letters.
+            let edge = NSShadow()
+            let offset: CGFloat = style.emboss == true ? -0.75 : 0.75
+            edge.shadowOffset = CGSize(width: offset, height: offset)
+            edge.shadowColor = context.scheme == .dark ? UIColor.black : UIColor.white
+            attributes[.shadow] = edge
+            attributes[.foregroundColor] = ink.withAlphaComponent(0.6)
         }
         if let revision {
             // In the colour of whoever made the change: added text underlined, removed text struck through.
@@ -103,6 +132,24 @@ enum Typography {
         let hash = (author ?? "").unicodeScalars.reduce(5381) { ($0 &* 33) &+ Int($1.value) }
         let color = palette[abs(hash) % palette.count]
         return color.resolvedColor(with: UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light))
+    }
+
+    /// How a `w:u` kind is drawn; wavy lines, which TextKit lacks, as a single line.
+    static func underline(_ kind: String?) -> NSUnderlineStyle {
+        switch kind {
+        case "double", "wavyDouble": return .double
+        case "thick", "wavyHeavy": return .thick
+        case "dotted": return [.single, .patternDot]
+        case "dottedHeavy": return [.thick, .patternDot]
+        case "dash", "dashLong": return [.single, .patternDash]
+        case "dashedHeavy", "dashLongHeavy": return [.thick, .patternDash]
+        case "dotDash": return [.single, .patternDashDot]
+        case "dashDotHeavy": return [.thick, .patternDashDot]
+        case "dotDotDash": return [.single, .patternDashDotDot]
+        case "dashDotDotHeavy": return [.thick, .patternDashDotDot]
+        case "words": return [.single, .byWord]
+        default: return .single
+        }
     }
 
     /// Word's `w:highlight` names.
@@ -148,6 +195,12 @@ enum Typography {
         if !traits.isEmpty {
             descriptor = descriptor.withSymbolicTraits(traits.union(descriptor.symbolicTraits))
                 ?? UIFont.systemFont(ofSize: size).fontDescriptor.withSymbolicTraits(traits) ?? descriptor
+        }
+        if style.smallCaps == true {
+            // The font's own small capitals: lower case type, small caps selector.
+            descriptor = descriptor.addingAttributes([.featureSettings: [[
+                UIFontDescriptor.FeatureKey.featureIdentifier: 37, UIFontDescriptor.FeatureKey.typeIdentifier: 1,
+            ]]])
         }
         return UIFont(descriptor: descriptor, size: size)
     }

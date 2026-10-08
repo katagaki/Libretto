@@ -245,7 +245,7 @@ enum DocumentRenderer {
 
     private static let displayKeys: [NSAttributedString.Key] = [
         .font, .foregroundColor, .backgroundColor, .underlineStyle, .strikethroughStyle, .baselineOffset,
-        .underlineColor, .strikethroughColor,
+        .underlineColor, .strikethroughColor, .kern, .strokeWidth, .strokeColor, .shadow, .librettoAllCaps,
     ]
 
     private static func restyleParagraph(

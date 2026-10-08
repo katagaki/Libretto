@@ -432,6 +432,16 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         result.verticalAlignment = run.verticalAlignment ?? .baseline
         result.fontSize = run.fontSize ?? 22
         result.fontName = run.fontName
+        result.underlineKind = run.underline == true ? run.underlineStyle ?? "single" : "none"
+        result.isDoubleStruckThrough = run.isDoubleStruckThrough ?? false
+        result.smallCaps = run.smallCaps ?? false
+        result.allCaps = run.allCaps ?? false
+        result.outline = run.outline ?? false
+        result.shadow = run.shadow ?? false
+        result.emboss = run.emboss ?? false
+        result.imprint = run.imprint ?? false
+        result.characterSpacing = run.characterSpacing ?? 0
+        result.position = run.position ?? 0
         result.colorHex = run.colorHex
         result.highlight = run.highlight
         result.alignment = resolvedParagraph.alignment ?? .leading
@@ -516,6 +526,36 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             let current = styles.resolvedRunStyle(style, paragraphStyleID: paragraphStyleID).fontSize ?? 22
             style.fontSize = min(192, max(2, current + points * 2))
         }
+    }
+
+    /// Underlines in one of Word's kinds, or, with `none`, takes the underline away.
+    func setUnderline(_ kind: String) {
+        let styles = document.styles
+        editRuns { style, paragraphStyleID in
+            if kind == "none" {
+                var probe = style
+                probe.underline = nil
+                style.underline = styles.resolvedRunStyle(probe, paragraphStyleID: paragraphStyleID).underline == true
+                    ? false : nil
+                style.underlineStyle = nil
+            } else {
+                style.underline = true
+                style.underlineStyle = kind == "single" ? nil : kind
+            }
+        }
+    }
+
+    /// Turns an on/off effect, such as small capitals or an outline, on or off.
+    func setEffect(_ key: WritableKeyPath<RunStyle, Bool?>, _ isOn: Bool) {
+        setFlag(key, to: isOn)
+    }
+
+    func setCharacterSpacing(_ twips: Int) {
+        editRuns { style, _ in style.characterSpacing = twips == 0 ? nil : twips }
+    }
+
+    func setPosition(_ halfPoints: Int) {
+        editRuns { style, _ in style.position = halfPoints == 0 ? nil : halfPoints }
     }
 
     /// Sets the font family, or one of the theme's by its `+minor` or `+major` stand-in.

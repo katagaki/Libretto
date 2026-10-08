@@ -18,6 +18,8 @@ extension NSAttributedString.Key {
     static let librettoListLabel = NSAttributedString.Key("libretto.listLabel")
     /// A `BlockBox` on the mark ending a table or kept block's line.
     static let librettoBlock = NSAttributedString.Key("libretto.block")
+    /// On text drawn in capitals, which the layout manager draws upper-case glyphs for.
+    static let librettoAllCaps = NSAttributedString.Key("libretto.allCaps")
 }
 
 /// Keys that belong to the character they were put on, and must not be

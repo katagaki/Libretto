@@ -477,6 +477,17 @@ enum PropertyReader {
         result.isBold = isOn(rPr.firstChild(named: "b"))
         result.isItalic = isOn(rPr.firstChild(named: "i"))
         result.underline = isOn(rPr.firstChild(named: "u"))
+        if result.underline == true, let kind = rPr.firstChild(named: "u")?.attribute("val"), kind != "single" {
+            result.underlineStyle = kind
+        }
+        result.isDoubleStruckThrough = isOn(rPr.firstChild(named: "dstrike"))
+        result.smallCaps = isOn(rPr.firstChild(named: "smallCaps"))
+        result.characterSpacing = rPr.firstChild(named: "spacing")?.attribute("val").flatMap { Int($0) }
+        result.position = rPr.firstChild(named: "position")?.attribute("val").flatMap { Int($0) }
+        result.outline = isOn(rPr.firstChild(named: "outline"))
+        result.shadow = isOn(rPr.firstChild(named: "shadow"))
+        result.emboss = isOn(rPr.firstChild(named: "emboss"))
+        result.imprint = isOn(rPr.firstChild(named: "imprint"))
         result.isStruckThrough = isOn(rPr.firstChild(named: "strike"))
         if let color = rPr.firstChild(named: "color")?.attribute("val"), color != "auto" {
             result.colorHex = color.uppercased()

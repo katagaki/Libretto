@@ -463,6 +463,20 @@ struct RunStyle: Equatable, Hashable, Sendable {
     var highlight: String?
     var verticalAlignment: VerticalPosition?
     var allCaps: Bool?
+    /// `w:u`'s kind, when it is not a single line: `double`, `thick`,
+    /// `dotted`, `dash`, `wave`, `words` and the rest.
+    var underlineStyle: String?
+    var isDoubleStruckThrough: Bool?
+    var smallCaps: Bool?
+    /// Twentieths of a point added between characters, or taken away.
+    var characterSpacing: Int?
+    /// Half-points the text is raised, or lowered.
+    var position: Int?
+    var outline: Bool?
+    var shadow: Bool?
+    var emboss: Bool?
+    /// Engraved, as Word calls it.
+    var imprint: Bool?
 
     enum VerticalPosition: String, Sendable {
         case superscript
@@ -482,7 +496,16 @@ struct RunStyle: Equatable, Hashable, Sendable {
             colorHex: other.colorHex ?? colorHex,
             highlight: other.highlight ?? highlight,
             verticalAlignment: other.verticalAlignment ?? verticalAlignment,
-            allCaps: other.allCaps ?? allCaps
+            allCaps: other.allCaps ?? allCaps,
+            underlineStyle: other.underline != nil ? other.underlineStyle : underlineStyle,
+            isDoubleStruckThrough: other.isDoubleStruckThrough ?? isDoubleStruckThrough,
+            smallCaps: other.smallCaps ?? smallCaps,
+            characterSpacing: other.characterSpacing ?? characterSpacing,
+            position: other.position ?? position,
+            outline: other.outline ?? outline,
+            shadow: other.shadow ?? shadow,
+            emboss: other.emboss ?? emboss,
+            imprint: other.imprint ?? imprint
         )
     }
 }
