@@ -108,6 +108,48 @@ struct FormattingTests {
         #expect(pages(filler: count, keep: true) == (1, 1))
     }
 
+    @Test("A drop cap is a paragraph of its own, which the next one's first lines go around")
+    func dropCap() throws {
+        let long = String(repeating: "Once upon a time there was a story that ran on for line after line. ", count: 6)
+        let (controller, state, latest) = makeController(text: long)
+        controller.textView.selectedRange = NSRange(location: 10, length: 0)
+        controller.setDropCap(DropCap(inMargin: false, lines: 3))
+        #expect(state.selectionFormat.dropCap == nil)
+
+        let document = try #require(latest())
+        guard case .paragraph(let letter) = document.body[0], case .paragraph(let rest) = document.body[1] else {
+            Issue.record("expected two paragraphs")
+            return
+        }
+        #expect(letter.plainText == "O")
+        #expect(letter.properties.dropCap == DropCap(inMargin: false, lines: 3))
+        #expect(rest.plainText.hasPrefix("nce upon"))
+        #expect(try xml(document).contains("<w:framePr w:dropCap=\"drop\" w:hAnchor=\"text\" w:lines=\"3\""))
+
+        let layout = controller.layoutManager
+        let cap = try #require(layout.dropCaps.first)
+        let exclusion = try #require(cap.exclusion)
+        // The first lines start past the letter; the fourth is back at the margin.
+        let lines = (0..<4).map { index -> CGRect in
+            var rects: [CGRect] = []
+            layout.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: layout.numberOfGlyphs)) { rect, used, _, _, _ in
+                if rect.height > 1 { rects.append(used) }
+            }
+            return rects[index]
+        }
+        #expect(lines[0].minX >= exclusion.maxX - 1)
+        #expect(lines[2].minX >= exclusion.maxX - 1)
+        #expect(lines[3].minX < 1)
+
+        // Taking it away sets the letter back into its paragraph.
+        controller.textView.selectedRange = NSRange(location: 5, length: 0)
+        controller.setDropCap(nil)
+        let restored = try #require(latest())
+        #expect(restored.body.count == 1)
+        guard case .paragraph(let whole) = restored.body[0] else { return }
+        #expect(whole.plainText == long)
+    }
+
     @Test("Text in capitals is drawn with capital glyphs, and keeps its letters")
     func allCaps() throws {
         let (controller, _, latest) = makeController(text: "abc")

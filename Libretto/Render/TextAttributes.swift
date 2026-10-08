@@ -20,6 +20,9 @@ extension NSAttributedString.Key {
     static let librettoBlock = NSAttributedString.Key("libretto.block")
     /// On text drawn in capitals, which the layout manager draws upper-case glyphs for.
     static let librettoAllCaps = NSAttributedString.Key("libretto.allCaps")
+    /// A `DropCapBox` on a drop cap's paragraph, whose letter is drawn large
+    /// beside the start of the next paragraph rather than on a line of its own.
+    static let librettoDropCap = NSAttributedString.Key("libretto.dropCap")
 }
 
 /// Keys that belong to the character they were put on, and must not be
@@ -100,6 +103,20 @@ final class ListLabelBox: NSObject, Sendable {
     }
 
     override var hash: Int { text.hashValue }
+}
+
+final class DropCapBox: NSObject, Sendable {
+    let dropCap: DropCap
+
+    init(_ dropCap: DropCap) {
+        self.dropCap = dropCap
+    }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        (object as? DropCapBox)?.dropCap == dropCap
+    }
+
+    override var hash: Int { dropCap.hashValue }
 }
 
 final class BlockBox: NSObject, Sendable {

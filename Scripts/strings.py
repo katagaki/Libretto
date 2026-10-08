@@ -264,6 +264,12 @@ S = {
  "Leader.dot": ["Dots", "点線", "점", "点", "點"],
  "Leader.hyphen": ["Dashes", "ハイフン", "대시", "短划线", "虛線"],
  "Leader.underscore": ["Line", "下線", "선", "下划线", "底線"],
+ "Paragraph.Section.DropCap": ["Drop Cap", "ドロップキャップ", "단락 첫 문자 장식", "首字下沉", "首字放大"],
+ "Paragraph.DropCap": ["Drop Cap", "ドロップキャップ", "단락 첫 문자 장식", "首字下沉", "首字放大"],
+ "DropCap.none": ["None", "なし", "없음", "无", "無"],
+ "DropCap.drop": ["Dropped", "本文内に表示", "본문", "下沉", "繞排"],
+ "DropCap.margin": ["In Margin", "余白に表示", "여백", "悬挂", "邊界"],
+ "Paragraph.DropCap.Lines": ["Lines to Drop: %d", "ドロップする行数：%d", "놓을 줄 수: %d", "下沉行数：%d", "放大行數：%d"],
 }
 
 reuse = ["Alert.Error.Title", "Common.OK", "Format.ClearAll", "Format.Section.Text", "Format.Text.Size",

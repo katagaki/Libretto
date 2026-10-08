@@ -653,6 +653,47 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         editParagraphs { $0.borders = borders }
     }
 
+    /// Starts the paragraph at the selection with a drop cap, changes the one
+    /// it has, or, with `nil`, sets the letter back into the paragraph. As in
+    /// Word, the letter is a paragraph of its own, before the one it starts.
+    func setDropCap(_ dropCap: DropCap?) {
+        let styles = document.styles
+        let string = storage.string as NSString
+        var range = paragraphRange(at: textView.selectedRange.location)
+        func isDropCap(_ range: NSRange) -> Bool {
+            styles.resolvedParagraphProperties(paragraphModel(for: range).properties).dropCap != nil
+        }
+        if !isDropCap(range), range.location > 0 {
+            let previous = paragraphRange(at: range.location - 1)
+            if isDropCap(previous) { range = previous }
+        }
+        if isDropCap(range) {
+            if let dropCap {
+                var paragraph = paragraphModel(for: range)
+                paragraph.properties.dropCap = dropCap
+                storage.addAttribute(.librettoParagraph, value: ParagraphBox(paragraph), range: range)
+            } else if hasMark(range) {
+                // The letter joins the paragraph after it again.
+                storage.deleteCharacters(in: NSRange(location: NSMaxRange(range) - 1, length: 1))
+            }
+            commit(restyling: range, scope: .formatting)
+            return
+        }
+        guard let dropCap, range.length > (hasMark(range) ? 1 : 0), !isBlockLine(range) else { return }
+        let first = string.rangeOfComposedCharacterSequence(at: range.location)
+        guard string.character(at: first.location) != TextCharacters.paragraphBreakUnit else { return }
+        var letter = paragraphModel(for: range).splitCopy()
+        letter.properties.dropCap = dropCap
+        letter.properties.list = nil
+        storage.beginEditing()
+        storage.addAttribute(.librettoParagraph, value: ParagraphBox(letter), range: first)
+        var mark = storage.attributes(at: first.location, effectiveRange: nil)
+        for key in librettoPositionalKeys { mark[key] = nil }
+        storage.insert(NSAttributedString(string: "\n", attributes: mark), at: NSMaxRange(first))
+        storage.endEditing()
+        commit(restyling: NSRange(location: range.location, length: range.length + 1), scope: .formatting)
+    }
+
     /// Sets the tab stops the paragraphs end up with: their own, and clearing
     /// any of their style's that are not among them.
     func setTabStops(_ stops: [TabStop]) {
@@ -988,6 +1029,8 @@ final class DocumentTextView: UITextView {
         smartInsertDeleteType = .no
         // ⌘F and the More menu's Find and Replace.
         isFindInteractionEnabled = true
+        // A drop cap set in the margin is drawn beside the text, outside it.
+        clipsToBounds = false
         accessibilityIdentifier = "documentText"
     }
 

@@ -95,7 +95,7 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         container.lineFragmentPadding = 0
         container.exclusionPaths = (0..<pages).map {
             UIBezierPath(rect: geometry.band(after: $0, reserving: noteHeights[$0] ?? 0))
-        }
+        } + dropCapExclusions.map { UIBezierPath(rect: $0) }
     }
 
     // MARK: - Footnotes
@@ -119,19 +119,73 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     @discardableResult
     func layOutPages(in container: NSTextContainer, startingWith estimate: Int) -> Int {
         var pages = layOutText(in: container, startingWith: estimate)
-        guard !footnotes.isEmpty || !noteHeights.isEmpty else {
-            notesByPage = [:]
-            return pages
-        }
+        // Drop caps are placed the same way: where the paragraph they start falls decides where they go.
         for _ in 0..<4 {
-            let placed = placeNotes()
+            let placed = footnotes.isEmpty && noteHeights.isEmpty ? (byPage: [:], heights: [:]) : placeNotes()
+            let caps = placeDropCaps()
             notesByPage = placed.byPage
-            guard placed.heights != noteHeights else { break }
+            dropCaps = caps
+            let exclusions = caps.compactMap(\.exclusion)
+            guard placed.heights != noteHeights || exclusions != dropCapExclusions else { break }
             noteHeights = placed.heights
+            dropCapExclusions = exclusions
             configure(container, pages: pages)
             pages = layOutText(in: container, startingWith: pages)
         }
         return pages
+    }
+
+    // MARK: - Drop caps
+
+    struct PlacedDropCap {
+        /// The drop cap's paragraph, which takes no room of its own.
+        var paragraph: NSRange
+        var letter: NSAttributedString
+        /// Where the letter's top left corner goes, in the container.
+        var origin: CGPoint
+        /// What the next paragraph's lines go around, unless the letter is in the margin.
+        var exclusion: CGRect?
+    }
+
+    private(set) var dropCaps: [PlacedDropCap] = []
+    private var dropCapExclusions: [CGRect] = []
+
+    private func placeDropCaps() -> [PlacedDropCap] {
+        guard let storage = textStorage else { return [] }
+        let string = storage.string as NSString
+        var result: [PlacedDropCap] = []
+        storage.enumerateAttribute(.librettoDropCap, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            guard let box = value as? DropCapBox else { return }
+            let paragraph = string.paragraphRange(for: NSRange(location: range.location, length: 0))
+            let next = NSMaxRange(paragraph)
+            let text = string.substring(with: paragraph).trimmingCharacters(in: .newlines)
+            guard !text.isEmpty, next < string.length else { return }
+            let glyph = glyphIndexForCharacter(at: next)
+            guard glyph < numberOfGlyphs else { return }
+            let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let font = storage.attribute(.font, at: next, effectiveRange: nil) as? UIFont ?? .systemFont(ofSize: 11)
+            let style = storage.attribute(.paragraphStyle, at: next, effectiveRange: nil) as? NSParagraphStyle
+            let lineHeight = font.lineHeight * max(1, style?.lineHeightMultiple ?? 1)
+            let top = line.minY + (style?.paragraphSpacingBefore ?? 0)
+            let lines = CGFloat(max(1, box.dropCap.lines))
+            // As tall, cap to baseline, as the lines it drops into.
+            let capFont = storage.attribute(.font, at: paragraph.location, effectiveRange: nil) as? UIFont ?? font
+            let capHeight = (lines - 1) * lineHeight + font.capHeight
+            let size = capHeight / max(capFont.capHeight / capFont.pointSize, 0.1)
+            let letterFont = capFont.withSize(size)
+            let color = storage.attribute(.foregroundColor, at: paragraph.location, effectiveRange: nil) ?? UIColor.label
+            let letter = NSAttributedString(string: text, attributes: [.font: letterFont, .foregroundColor: color])
+            let width = ceil(letter.size().width)
+            let baseline = top + (lines - 1) * lineHeight + font.ascender
+            let gap: CGFloat = 4
+            let x = box.dropCap.inMargin ? -(width + gap) : 0
+            result.append(PlacedDropCap(
+                paragraph: paragraph, letter: letter, origin: CGPoint(x: x, y: baseline - letterFont.ascender),
+                exclusion: box.dropCap.inMargin ? nil
+                    : CGRect(x: -1, y: top, width: width + gap + 1, height: lines * lineHeight - 1)
+            ))
+        }
+        return result
     }
 
     private func placeNotes() -> (byPage: [Int: [NSAttributedString]], heights: [Int: CGFloat]) {
@@ -280,6 +334,15 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard let storage = textStorage else { return false }
         let characters = characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
         guard characters.length > 0 else { return false }
+        if storage.attribute(.librettoDropCap, at: characters.location, effectiveRange: nil) != nil {
+            // A drop cap's line takes no room: its letter sits beside the next paragraph.
+            var rect = lineFragmentRect.pointee
+            rect.size.height = 0.01
+            lineFragmentRect.pointee = rect
+            lineFragmentUsedRect.pointee = CGRect(origin: rect.origin, size: CGSize(width: 0, height: 0.01))
+            baselineOffset.pointee = 0
+            return true
+        }
         let string = storage.string as NSString
         let last = NSMaxRange(characters) - 1
         var endsPage = string.character(at: last) == TextCharacters.pageBreakUnit
@@ -490,7 +553,31 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     // MARK: - List labels
 
     override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
-        super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        if dropCaps.isEmpty {
+            super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        } else {
+            // A drop cap's own line is not drawn; its letter is, large, beside the next paragraph.
+            var remaining = [glyphsToShow]
+            for cap in dropCaps {
+                let hidden = glyphRange(forCharacterRange: cap.paragraph, actualCharacterRange: nil)
+                remaining = remaining.flatMap { range -> [NSRange] in
+                    guard NSIntersectionRange(range, hidden).length > 0 else { return [range] }
+                    var pieces: [NSRange] = []
+                    if hidden.location > range.location {
+                        pieces.append(NSRange(location: range.location, length: hidden.location - range.location))
+                    }
+                    if NSMaxRange(range) > NSMaxRange(hidden) {
+                        pieces.append(NSRange(location: NSMaxRange(hidden), length: NSMaxRange(range) - NSMaxRange(hidden)))
+                    }
+                    return pieces
+                }
+                let shown = NSRange(location: hidden.location, length: hidden.length + 1)
+                if NSIntersectionRange(shown, glyphsToShow).length > 0 {
+                    cap.letter.draw(at: CGPoint(x: origin.x + cap.origin.x, y: origin.y + cap.origin.y))
+                }
+            }
+            for range in remaining where range.length > 0 { super.drawGlyphs(forGlyphRange: range, at: origin) }
+        }
         guard let storage = textStorage else { return }
         let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
         let string = storage.string as NSString

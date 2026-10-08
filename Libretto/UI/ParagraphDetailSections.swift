@@ -16,6 +16,31 @@ struct ParagraphDetailSections: View {
             flag("Paragraph.PageBreakBefore", \.pageBreakBefore, isOn: format.pageBreakBefore)
         }
 
+        Section("Paragraph.Section.DropCap") {
+            Picker("Paragraph.DropCap", selection: Binding(
+                get: { format.dropCap.map { $0.inMargin ? "margin" : "drop" } ?? "none" },
+                set: { kind in
+                    controller?.setDropCap(kind == "none" ? nil : DropCap(inMargin: kind == "margin", lines: format.dropCap?.lines ?? 3))
+                }
+            )) {
+                Text("DropCap.none").tag("none")
+                Text("DropCap.drop").tag("drop")
+                Text("DropCap.margin").tag("margin")
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("dropCap")
+            if let dropCap = format.dropCap {
+                Stepper(
+                    String(format: String(localized: "Paragraph.DropCap.Lines"), dropCap.lines),
+                    value: Binding(
+                        get: { dropCap.lines },
+                        set: { controller?.setDropCap(DropCap(inMargin: dropCap.inMargin, lines: $0)) }
+                    ),
+                    in: 2...10
+                )
+            }
+        }
+
         Section("Paragraph.Section.Borders") {
             Picker("Paragraph.Borders", selection: Binding(
                 get: { BorderPreset(format.borders) },

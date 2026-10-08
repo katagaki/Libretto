@@ -55,6 +55,9 @@ enum DocumentRenderer {
             ),
         ]
         if let label { attributes[.librettoListLabel] = label }
+        if let dropCap = context.styles.resolvedParagraphProperties(paragraph.properties).dropCap {
+            attributes[.librettoDropCap] = DropCapBox(dropCap)
+        }
         return attributes
     }
 
@@ -258,6 +261,11 @@ enum DocumentRenderer {
         let style = Typography.paragraphStyle(paragraph.properties, context: context, isListItem: label != nil)
         storage.addAttribute(.paragraphStyle, value: style, range: range)
         storage.addAttribute(.librettoParagraph, value: ParagraphBox(paragraph), range: range)
+        if let dropCap = context.styles.resolvedParagraphProperties(paragraph.properties).dropCap {
+            storage.addAttribute(.librettoDropCap, value: DropCapBox(dropCap), range: range)
+        } else {
+            storage.removeAttribute(.librettoDropCap, range: range)
+        }
 
         storage.enumerateAttribute(.librettoRun, in: range) { value, runRange, _ in
             if storage.attribute(.attachment, at: runRange.location, effectiveRange: nil) is BlockAttachment { return }
