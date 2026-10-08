@@ -408,7 +408,8 @@ struct PageSetupPanel: View {
         }
     }
 
-    private var setup: PageSetup { document.pageSetup }
+    /// The section the selection is in: the last section's setup is the document's own.
+    private var setup: PageSetup { state.controller?.currentSection.setup ?? document.pageSetup }
 
     private var currentPaper: PaperSize? {
         let short = min(setup.width, setup.height)
@@ -457,6 +458,28 @@ struct PageSetupPanel: View {
                 .pickerStyle(.segmented)
             }
 
+            Section {
+                Picker("PageSetup.Start", selection: Binding(
+                    get: { setup.start },
+                    set: { start in change { $0.start = start } }
+                )) {
+                    ForEach([SectionStart.nextPage, .continuous, .evenPage, .oddPage], id: \.self) { start in
+                        Text(LocalizedStringKey("SectionStart.\(start.rawValue)")).tag(start)
+                    }
+                }
+                Picker("PageSetup.Columns", selection: Binding(
+                    get: { setup.columns },
+                    set: { columns in change { $0.columns = columns } }
+                )) {
+                    ForEach(1...3, id: \.self) { count in Text(String(count)).tag(count) }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("PageSetup.Section.Section")
+            } footer: {
+                Text("PageSetup.Section.Footer")
+            }
+
             Section("PageSetup.Section.Margins") {
                 ForEach(MarginPreset.allCases) { preset in
                     Button {
@@ -502,7 +525,11 @@ struct PageSetupPanel: View {
     private func change(_ edit: (inout PageSetup) -> Void) {
         state.controller?.flush()
         state.pendingScope = .pageSetup
-        edit(&document.pageSetup)
+        if let controller = state.controller {
+            controller.updateSection(edit)
+        } else {
+            edit(&document.pageSetup)
+        }
     }
 }
 

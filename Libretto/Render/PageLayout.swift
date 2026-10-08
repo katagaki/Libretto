@@ -3,52 +3,115 @@ import UIKit
 
 /// Where the pages are, in the text container's coordinates.
 ///
-/// The whole document is set in one tall text container, one page's text
-/// width wide. Page `n`'s text occupies `n × pitch` to `n × pitch +
-/// contentHeight`; the band between one page's text and the next — bottom
-/// margin, the gap between pages, top margin — is excluded from the
+/// The whole document is set in one tall text container, as wide as the
+/// widest page's text. The band between one page's text and the next —
+/// bottom margin, the gap between pages, top margin — is excluded from the
 /// container, so lines skip it and the text breaks into pages by itself,
-/// while staying one text that edits, selects and scrolls as one.
+/// while staying one text that edits, selects and scrolls as one. Pages may
+/// differ, section by section: a narrower page's text is kept to its own
+/// width by exclusions at its sides.
 struct PageGeometry: Equatable {
-    var pageSize: CGSize
-    var margins: UIEdgeInsets
-    /// Space between pages on screen; none in a PDF.
-    var gap: CGFloat
+    /// One page's size and margins, in points.
+    struct Shape: Equatable {
+        var size: CGSize
+        var margins: UIEdgeInsets
 
-    init(setup: PageSetup, gap: CGFloat) {
-        pageSize = setup.size
-        margins = UIEdgeInsets(
-            top: CGFloat(setup.marginTop) / 20, left: CGFloat(setup.marginLeft) / 20,
-            bottom: CGFloat(setup.marginBottom) / 20, right: CGFloat(setup.marginRight) / 20
-        )
-        // Margins so wide there is no page left would leave nowhere for text.
-        let minimum: CGFloat = 72
-        if pageSize.width - margins.left - margins.right < minimum {
-            margins.left = (pageSize.width - minimum) / 2
-            margins.right = margins.left
+        init(setup: PageSetup) {
+            size = setup.size
+            margins = UIEdgeInsets(
+                top: CGFloat(setup.marginTop) / 20, left: CGFloat(setup.marginLeft) / 20,
+                bottom: CGFloat(setup.marginBottom) / 20, right: CGFloat(setup.marginRight) / 20
+            )
+            // Margins so wide there is no page left would leave nowhere for text.
+            let minimum: CGFloat = 72
+            if size.width - margins.left - margins.right < minimum {
+                margins.left = (size.width - minimum) / 2
+                margins.right = margins.left
+            }
+            if size.height - margins.top - margins.bottom < minimum {
+                margins.top = (size.height - minimum) / 2
+                margins.bottom = margins.top
+            }
         }
-        if pageSize.height - margins.top - margins.bottom < minimum {
-            margins.top = (pageSize.height - minimum) / 2
-            margins.bottom = margins.top
-        }
-        self.gap = gap
+
+        var contentWidth: CGFloat { size.width - margins.left - margins.right }
+        var contentHeight: CGFloat { size.height - margins.top - margins.bottom }
     }
 
-    var contentWidth: CGFloat { pageSize.width - margins.left - margins.right }
-    var contentHeight: CGFloat { pageSize.height - margins.top - margins.bottom }
-    /// From one page's top to the next, on screen and in the container alike.
-    var pitch: CGFloat { pageSize.height + gap }
+    /// Each page's shape, in order; pages past the last are shaped like it.
+    private(set) var shapes: [Shape]
+    /// Space between pages on screen; none in a PDF.
+    var gap: CGFloat
+    /// Each listed page's top, in the column of pages.
+    private var tops: [CGFloat] = []
+
+    init(setup: PageSetup, gap: CGFloat) {
+        self.init(shapes: [Shape(setup: setup)], gap: gap)
+    }
+
+    init(shapes: [Shape], gap: CGFloat) {
+        self.shapes = shapes.isEmpty ? [Shape(setup: PageSetup())] : shapes
+        self.gap = gap
+        var top: CGFloat = 0
+        tops = self.shapes.map { shape in
+            defer { top += shape.size.height + gap }
+            return top
+        }
+    }
+
+    func shape(_ index: Int) -> Shape { shapes[min(max(0, index), shapes.count - 1)] }
+
+    /// The first page's size and margins.
+    var pageSize: CGSize { shapes[0].size }
+    var margins: UIEdgeInsets { shapes[0].margins }
+
+    /// Where the container's left edge is on a page: the leftmost any page's text starts.
+    var textLeft: CGFloat { shapes.map(\.margins.left).min() ?? 0 }
+    /// The container's width: to the rightmost any page's text reaches.
+    var contentWidth: CGFloat {
+        (shapes.map { $0.size.width - $0.margins.right }.max() ?? 0) - textLeft
+    }
+    /// The least height of text on any page: what must fit on whichever page it falls.
+    var contentHeight: CGFloat { shapes.map(\.contentHeight).min() ?? 0 }
+    /// The least width of text on any page.
+    var narrowestWidth: CGFloat { shapes.map(\.contentWidth).min() ?? 0 }
+
+    /// Page `index`'s top, in the column of pages.
+    func pageTop(_ index: Int) -> CGFloat {
+        if index < tops.count { return tops[max(0, index)] }
+        let last = shapes.count - 1
+        return tops[last] + CGFloat(index - last) * (shapes[last].size.height + gap)
+    }
+
+    /// Where page `index`'s text starts and ends, in the container.
+    func textTop(_ index: Int) -> CGFloat { pageTop(index) + shape(index).margins.top - margins.top }
+    func textBottom(_ index: Int) -> CGFloat { textTop(index) + shape(index).contentHeight }
 
     /// The band between page `index`'s text and the next page's.
     func band(after index: Int, reserving reserve: CGFloat = 0) -> CGRect {
-        CGRect(
-            x: -1, y: CGFloat(index) * pitch + contentHeight - reserve, width: contentWidth + 2,
-            height: pitch - contentHeight + reserve
-        )
+        let top = textBottom(index) - reserve
+        return CGRect(x: -1, y: top, width: contentWidth + 2, height: textTop(index + 1) - top)
+    }
+
+    /// What lies beside page `index`'s text in a container wider than it.
+    func sides(of index: Int) -> [CGRect] {
+        let shape = self.shape(index)
+        let left = shape.margins.left - textLeft
+        let right = left + shape.contentWidth
+        let top = textTop(index)
+        let height = shape.contentHeight
+        var result: [CGRect] = []
+        if left > 0.5 { result.append(CGRect(x: -1, y: top, width: left + 1, height: height)) }
+        if contentWidth - right > 0.5 { result.append(CGRect(x: right, y: top, width: contentWidth - right + 1, height: height)) }
+        return result
     }
 
     func page(containing y: CGFloat) -> Int {
-        max(0, Int(floor(y / pitch)))
+        let column = y + margins.top
+        if let index = tops.lastIndex(where: { $0 <= column }), index < tops.count - 1 { return index }
+        let last = shapes.count - 1
+        let pitch = shapes[last].size.height + gap
+        return max(0, last + Int(floor((column - tops[last]) / pitch)))
     }
 
     /// The pages text that ends at `height` in the container needs.
@@ -58,12 +121,15 @@ struct PageGeometry: Equatable {
 
     /// Where page `index` sits in a column of pages.
     func pageFrame(_ index: Int) -> CGRect {
-        CGRect(x: 0, y: CGFloat(index) * pitch, width: pageSize.width, height: pageSize.height)
+        CGRect(origin: CGPoint(x: 0, y: pageTop(index)), size: shape(index).size)
     }
 
     func totalHeight(pages: Int) -> CGFloat {
-        CGFloat(pages) * pitch - gap
+        pageTop(pages) - gap
     }
+
+    /// The widest page.
+    var widestPage: CGFloat { shapes.map(\.size.width).max() ?? 0 }
 }
 
 /// Lays text out in pages: page breaks end the page, and list labels are
@@ -90,12 +156,70 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     }
 
     /// Sets the container up for `pages` pages of text.
+    /// How many pages the container was last set up for.
+    private var configuredPages = 0
+
     func configure(_ container: NSTextContainer, pages: Int) {
+        configuredPages = pages
         container.size = CGSize(width: geometry.contentWidth, height: geometry.totalHeight(pages: pages + 1))
         container.lineFragmentPadding = 0
-        container.exclusionPaths = (0..<pages).map {
-            UIBezierPath(rect: geometry.band(after: $0, reserving: noteHeights[$0] ?? 0))
+        container.exclusionPaths = (0..<pages).flatMap { page in
+            [UIBezierPath(rect: geometry.band(after: page, reserving: noteHeights[page] ?? 0))]
+                + geometry.sides(of: page).map { UIBezierPath(rect: $0) }
         } + dropCapExclusions.map { UIBezierPath(rect: $0) }
+    }
+
+    // MARK: - Sections
+
+    /// A section: the last character it holds, its section break's mark, and its page setup.
+    struct SectionSpan: Equatable {
+        var end: Int
+        var setup: PageSetup
+    }
+
+    /// The document's sections, in order, the last running to the end.
+    var sections: [SectionSpan] = [] {
+        didSet {
+            // A section come, gone or changed lays the text out afresh. Typing only moves where
+            // sections end, and the text it changes is laid out afresh anyway.
+            guard oldValue.map(\.setup) != sections.map(\.setup), let storage = textStorage else { return }
+            invalidateLayout(forCharacterRange: NSRange(location: 0, length: storage.length), actualCharacterRange: nil)
+        }
+    }
+    /// Which section each page is in, as laid out.
+    private(set) var pageSections: [Int] = []
+
+    /// The section a character is in.
+    func section(at location: Int) -> Int {
+        sections.firstIndex { location <= $0.end } ?? max(0, sections.count - 1)
+    }
+
+    /// Each page shaped as the section it starts in is, the pages it took last time over.
+    private func placeSections(pages: Int) -> (shapes: [PageGeometry.Shape], pageSections: [Int]) {
+        guard sections.count > 1, let container = textContainers.first, let storage = textStorage else {
+            let shape = sections.first.map { PageGeometry.Shape(setup: $0.setup) } ?? geometry.shape(0)
+            return ([shape], Array(repeating: 0, count: pages))
+        }
+        var shapes: [PageGeometry.Shape] = []
+        var owners: [Int] = []
+        var owner = 0
+        for page in 0..<pages {
+            let area = CGRect(x: 0, y: geometry.textTop(page), width: geometry.contentWidth, height: geometry.shape(page).contentHeight)
+            let glyphs = glyphRange(forBoundingRect: area, in: container)
+            if glyphs.length > 0 {
+                let first = characterIndexForGlyph(at: glyphs.location)
+                if first < storage.length { owner = max(owner, section(at: first)) }
+            }
+            owners.append(owner)
+            shapes.append(PageGeometry.Shape(setup: sections[owner].setup))
+        }
+        return (shapes, owners)
+    }
+
+    /// The section break a paragraph mark is, if it is one: the section it starts.
+    private func sectionStarted(byMarkAt index: Int) -> SectionSpan? {
+        guard let ending = sections.firstIndex(where: { $0.end == index }), ending + 1 < sections.count else { return nil }
+        return sections[ending + 1]
     }
 
     // MARK: - Footnotes
@@ -120,15 +244,20 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     func layOutPages(in container: NSTextContainer, startingWith estimate: Int) -> Int {
         var pages = layOutText(in: container, startingWith: estimate)
         // Drop caps are placed the same way: where the paragraph they start falls decides where they go.
-        for _ in 0..<4 {
+        // So are the pages' sizes, where sections differ: a page is shaped as the section it starts in.
+        for _ in 0..<6 {
             let placed = footnotes.isEmpty && noteHeights.isEmpty ? (byPage: [:], heights: [:]) : placeNotes()
             let caps = placeDropCaps()
+            let paged = placeSections(pages: pages)
             notesByPage = placed.byPage
             dropCaps = caps
+            pageSections = paged.pageSections
             let exclusions = caps.compactMap(\.exclusion)
-            guard placed.heights != noteHeights || exclusions != dropCapExclusions else { break }
+            let shaped = PageGeometry(shapes: paged.shapes, gap: geometry.gap)
+            guard placed.heights != noteHeights || exclusions != dropCapExclusions || shaped != geometry else { break }
             noteHeights = placed.heights
             dropCapExclusions = exclusions
+            geometry = shaped
             configure(container, pages: pages)
             pages = layOutText(in: container, startingWith: pages)
         }
@@ -197,16 +326,17 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
             byPage[geometry.page(containing: line.midY), default: []].append(note.text)
         }
-        let heights = byPage.mapValues { texts in
+        let heights = Dictionary(uniqueKeysWithValues: byPage.map { page, texts in
+            let shape = geometry.shape(page)
             let height = texts.reduce(Self.noteSeparatorSpace) { total, text in
                 total + ceil(text.boundingRect(
-                    with: CGSize(width: geometry.contentWidth, height: .greatestFiniteMagnitude),
+                    with: CGSize(width: shape.contentWidth, height: .greatestFiniteMagnitude),
                     options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil
                 ).height) + 2
             }
             // Never so much that the page has no room left for its own text.
-            return min(height, geometry.contentHeight * 0.6)
-        }
+            return (page, min(height, shape.contentHeight * 0.6))
+        })
         return (byPage, heights)
     }
 
@@ -230,7 +360,7 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     /// The text, laid out on as many pages as it takes.
     private func layOutText(in container: NSTextContainer, startingWith estimate: Int) -> Int {
         var pages = max(1, estimate)
-        if container.exclusionPaths.count != pages { configure(container, pages: pages) }
+        if configuredPages != pages || container.exclusionPaths.isEmpty { configure(container, pages: pages) }
         ensureLayout(for: container)
         if NSMaxRange(glyphRange(for: container)) < numberOfGlyphs {
             // Adding a few pages at a time lays everything out again each
@@ -318,7 +448,8 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     ) -> NSLayoutManager.ControlCharacterAction {
         guard let storage = textStorage, charIndex < storage.length else { return action }
         let string = storage.string as NSString
-        guard string.character(at: charIndex) == TextCharacters.pageBreakUnit else { return action }
+        let unit = string.character(at: charIndex)
+        guard unit == TextCharacters.pageBreakUnit || unit == TextCharacters.columnBreakUnit else { return action }
         // A break that ends its paragraph keeps the paragraph's mark beside
         // it, as Word does, so the next paragraph is the one to start the page.
         let endsParagraph = charIndex + 1 < string.length
@@ -345,9 +476,12 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         }
         let string = storage.string as NSString
         let last = NSMaxRange(characters) - 1
-        var endsPage = string.character(at: last) == TextCharacters.pageBreakUnit
+        func isBreak(_ unit: unichar) -> Bool {
+            unit == TextCharacters.pageBreakUnit || unit == TextCharacters.columnBreakUnit
+        }
+        var endsPage = isBreak(string.character(at: last))
             || (last > 0 && string.character(at: last) == TextCharacters.paragraphBreakUnit
-                && string.character(at: last - 1) == TextCharacters.pageBreakUnit)
+                && isBreak(string.character(at: last - 1)))
         if !endsPage, string.character(at: last) == TextCharacters.paragraphBreakUnit, last + 1 < string.length,
            storage.attribute(.librettoBlock, at: last + 1, effectiveRange: nil) == nil,
            let box = storage.attribute(.librettoParagraph, at: last + 1, effectiveRange: nil) as? ParagraphBox {
@@ -358,7 +492,7 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 // What the next paragraph keeps together, if it would not fit on what is left of the page.
                 let rect = lineFragmentRect.pointee
                 let page = geometry.page(containing: rect.minY + 0.5)
-                let bottom = CGFloat(page) * geometry.pitch + geometry.contentHeight - (noteHeights[page] ?? 0)
+                let bottom = geometry.textBottom(page) - (noteHeights[page] ?? 0)
                 let left = bottom - rect.maxY
                 if left > 0, let needed = keptHeight(startingAt: last + 1, properties: next, available: left),
                    needed > left, needed < geometry.contentHeight * 0.9 {
@@ -366,9 +500,24 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 }
             }
         }
+        // A section break other than a continuous one ends the page; one onto an even or odd page,
+        // the page after that too, if the next page is not the kind it wants.
+        var skipsPage = false
+        if !endsPage, string.character(at: last) == TextCharacters.paragraphBreakUnit,
+           let next = sectionStarted(byMarkAt: last), next.setup.start != .continuous {
+            endsPage = true
+            let following = geometry.page(containing: lineFragmentRect.pointee.minY + 0.5) + 1
+            // Page numbers count from one: an even page has an odd index.
+            switch next.setup.start {
+            case .evenPage: skipsPage = following % 2 == 0
+            case .oddPage: skipsPage = following % 2 == 1
+            default: break
+            }
+        }
         guard endsPage else { return false }
         var rect = lineFragmentRect.pointee
-        let nextPageTop = CGFloat(geometry.page(containing: rect.minY + 0.5) + 1) * geometry.pitch
+        let page = geometry.page(containing: rect.minY + 0.5)
+        let nextPageTop = geometry.textTop(page + (skipsPage ? 2 : 1))
         guard nextPageTop > rect.maxY else { return false }
         rect.size.height = nextPageTop - rect.minY
         lineFragmentRect.pointee = rect

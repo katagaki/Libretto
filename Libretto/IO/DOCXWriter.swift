@@ -115,7 +115,7 @@ struct BodyWriter {
     private mutating func write(_ paragraph: Paragraph) {
         if let original = paragraph.originalXML, paragraph.inlines == paragraph.originalInlines,
            paragraph.properties == paragraph.originalProperties ?? ParagraphProperties(),
-           paragraph.markRevision == paragraph.originalMarkRevision {
+           paragraph.markRevision == paragraph.originalMarkRevision, paragraph.section?.isChanged != true {
             output += original
             return
         }
@@ -191,6 +191,8 @@ struct BodyWriter {
             return "<w:br/>"
         case .pageBreak:
             return "<w:br w:type=\"page\"/>"
+        case .columnBreak:
+            return "<w:br w:type=\"column\"/>"
         case .note(let reference):
             return reference.xml
         case .image(let image):

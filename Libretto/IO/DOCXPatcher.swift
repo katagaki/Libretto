@@ -64,12 +64,25 @@ enum DOCXPatcher {
         let new = paragraph.properties
         let old = paragraph.originalProperties ?? ParagraphProperties()
         let markChanged = paragraph.markRevision != paragraph.originalMarkRevision
-        if let preserved = paragraph.preservedPropertiesXML, new == old, !markChanged { return preserved }
-        if paragraph.preservedPropertiesXML == nil, new == ParagraphProperties(), paragraph.markRevision == nil {
+        let keptSection = paragraph.preservedPropertiesXML?.contains("sectPr") ?? false
+        // A section changed, made here, or taken away.
+        let sectionChanged = paragraph.section.map { $0.isChanged || !keptSection } ?? keptSection
+        if let preserved = paragraph.preservedPropertiesXML, new == old, !markChanged, !sectionChanged { return preserved }
+        if paragraph.preservedPropertiesXML == nil, new == ParagraphProperties(), paragraph.markRevision == nil,
+           paragraph.section == nil {
             return nil
         }
 
         let edited = editing(paragraph.preservedPropertiesXML ?? "<w:pPr/>") { pPr in
+            if sectionChanged {
+                pPr.children(named: "sectPr").forEach(pPr.removeChild)
+                if let section = paragraph.section {
+                    let xml = sectionPropertiesXML(for: section)
+                    if let element = XMLLite.fragment(xml, namespaces: namespaceBindings(for: xml)) {
+                        pPr.insertChild(element, at: pPr.children.count)
+                    }
+                }
+            }
             if markChanged {
                 let rPr = child("rPr", of: pPr)
                 rPr.children.filter { Revision.Kind(rawValue: $0.name) != nil }.forEach(rPr.removeChild)
@@ -283,6 +296,11 @@ enum DOCXPatcher {
                 sectPr.sortChildren(by: sectionPropertyOrder)
                 return
             }
+            sectPr.children(named: "type").forEach(sectPr.removeChild)
+            if setup.start != .nextPage { sectPr.insertChild(.word("type", ["val": setup.start.rawValue]), at: sectPr.children.count) }
+            let columns = child("cols", of: sectPr)
+            columns.setWordAttribute("num", setup.columns > 1 ? String(setup.columns) : nil)
+            columns.setWordAttribute("space", String(setup.columnSpacing))
             let size = child("pgSz", of: sectPr)
             size.setWordAttribute("w", String(setup.width))
             size.setWordAttribute("h", String(setup.height))

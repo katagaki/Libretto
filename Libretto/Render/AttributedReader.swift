@@ -167,6 +167,9 @@ enum AttributedReader {
                 case TextCharacters.pageBreakUnit:
                     flushText()
                     result.append(Inline(.pageBreak, format: format, hyperlink: hyperlink, revision: revision))
+                case TextCharacters.columnBreakUnit:
+                    flushText()
+                    result.append(Inline(.columnBreak, format: format, hyperlink: hyperlink, revision: revision))
                 case TextCharacters.attachmentUnit:
                     // An attachment from elsewhere, which there is no part for.
                     flushText()

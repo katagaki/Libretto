@@ -72,7 +72,7 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
     private var unzoomedSize: CGSize {
         guard let geometry else { return .zero }
         return CGSize(
-            width: geometry.pageSize.width + Self.inset * 2,
+            width: geometry.widestPage + Self.inset * 2,
             height: geometry.totalHeight(pages: pages) + Self.inset * 2
         )
     }
@@ -87,11 +87,11 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
 
         for (index, page) in pageViews.enumerated() {
             page.frame = geometry.pageFrame(index).offsetBy(dx: Self.inset, dy: Self.inset)
-            page.configure(texts, page: index, of: pages, geometry: geometry)
-            page.configureNotes(notes.byPage[index] ?? [], height: notes.heights[index] ?? 0, geometry: geometry)
+            page.configure(texts, page: index, of: pages, shape: geometry.shape(index))
+            page.configureNotes(notes.byPage[index] ?? [], height: notes.heights[index] ?? 0, shape: geometry.shape(index))
         }
         textView.frame = CGRect(
-            x: Self.inset + geometry.margins.left, y: Self.inset + geometry.margins.top,
+            x: Self.inset + geometry.textLeft, y: Self.inset + geometry.margins.top,
             width: geometry.contentWidth, height: max(1, geometry.totalHeight(pages: pages) - geometry.margins.top)
         )
         updateZoomLimits()
@@ -182,46 +182,67 @@ final class PagedDocumentView: UIView, UIScrollViewDelegate, UIGestureRecognizer
 
 /// The headers and footers, as the page backgrounds need them: which each
 /// page shows, and where.
+///
+/// Each section shows its own, and carries on the section before's for any
+/// kind it has none of, as Word does; its first page is the section's first.
 struct WordDocumentHeaderFooter: Equatable {
-    var headers: [HeaderFooterKind: HeaderFooterText] = [:]
-    var footers: [HeaderFooterKind: HeaderFooterText] = [:]
-    var titlePage = false
+    struct Section: Equatable {
+        var headers: [HeaderFooterKind: HeaderFooterText] = [:]
+        var footers: [HeaderFooterKind: HeaderFooterText] = [:]
+        var titlePage = false
+        /// Points from the page's top and bottom edges.
+        var headerDistance: CGFloat = 35
+        var footerDistance: CGFloat = 35
+    }
+
+    var sections: [Section] = [Section()]
+    /// Which section each page is in, as laid out; pages past the end are in the last.
+    var pageSections: [Int] = []
     var evenAndOdd = false
-    /// Points from the page's top and bottom edges.
-    var headerDistance: CGFloat = 35
-    var footerDistance: CGFloat = 35
 
     init() {}
 
-    init(document: WordDocument) {
-        let setup = document.pageSetup
-        for kind in HeaderFooterKind.allCases {
-            headers[kind] = document.headerFooter(kind, isFooter: false, in: setup)
-            footers[kind] = document.headerFooter(kind, isFooter: true, in: setup)
+    init(document: WordDocument, sections setups: [PageSetup]? = nil, pageSections: [Int] = []) {
+        var headers: [HeaderFooterKind: HeaderFooterText] = [:]
+        var footers: [HeaderFooterKind: HeaderFooterText] = [:]
+        sections = (setups ?? [document.pageSetup]).map { setup in
+            for kind in HeaderFooterKind.allCases {
+                if let id = setup.headerFooters.headers[kind] { headers[kind] = document.headerFooters[id] }
+                if let id = setup.headerFooters.footers[kind] { footers[kind] = document.headerFooters[id] }
+            }
+            return Section(
+                headers: headers, footers: footers, titlePage: setup.headerFooters.titlePage,
+                headerDistance: CGFloat(setup.headerDistance) / 20, footerDistance: CGFloat(setup.footerDistance) / 20
+            )
         }
-        titlePage = setup.headerFooters.titlePage
+        if sections.isEmpty { sections = [Section()] }
+        self.pageSections = pageSections
         evenAndOdd = document.evenAndOddHeaders
-        headerDistance = CGFloat(setup.headerDistance) / 20
-        footerDistance = CGFloat(setup.footerDistance) / 20
+    }
+
+    func section(forPage index: Int) -> Section {
+        let section = index < pageSections.count ? pageSections[index] : sections.count - 1
+        return sections[min(max(0, section), sections.count - 1)]
     }
 
     private func kind(forPage index: Int) -> HeaderFooterKind {
-        if index == 0, titlePage { return .first }
+        let section = index < pageSections.count ? pageSections[index] : sections.count - 1
+        let isFirst = index == 0 || (index < pageSections.count && pageSections[index - 1] != section)
+        if isFirst, self.section(forPage: index).titlePage { return .first }
         if evenAndOdd, index % 2 == 1 { return .even }
         return .default
     }
 
     /// What page `index` shows, if anything: an empty header shows nothing.
     func header(forPage index: Int) -> HeaderFooterText? {
-        headers[kind(forPage: index)].flatMap { $0.text.trimmed.isEmpty ? nil : $0 }
+        section(forPage: index).headers[kind(forPage: index)].flatMap { $0.text.trimmed.isEmpty ? nil : $0 }
     }
 
     func footer(forPage index: Int) -> HeaderFooterText? {
-        footers[kind(forPage: index)].flatMap { $0.text.trimmed.isEmpty ? nil : $0 }
+        section(forPage: index).footers[kind(forPage: index)].flatMap { $0.text.trimmed.isEmpty ? nil : $0 }
     }
 }
 
-/// One sheet of paper, with its header and footer drawn in the margins.
 /// The notes each page sets at its foot, and the room they take.
 struct PageNotes: Equatable {
     var byPage: [Int: [NSAttributedString]] = [:]
@@ -271,12 +292,12 @@ final class PageBackgroundView: UIView {
         addSubview(notesView)
     }
 
-    func configureNotes(_ notes: [NSAttributedString], height: CGFloat, geometry: PageGeometry) {
+    func configureNotes(_ notes: [NSAttributedString], height: CGFloat, shape: PageGeometry.Shape) {
         notesView.isHidden = notes.isEmpty
         notesView.notes = notes
         notesView.frame = CGRect(
-            x: geometry.margins.left, y: geometry.margins.top + geometry.contentHeight - height,
-            width: geometry.contentWidth, height: height
+            x: shape.margins.left, y: shape.margins.top + shape.contentHeight - height,
+            width: shape.contentWidth, height: height
         )
     }
 
@@ -284,8 +305,9 @@ final class PageBackgroundView: UIView {
         fatalError("init(coder:) is not used")
     }
 
-    func configure(_ texts: WordDocumentHeaderFooter, page: Int, of count: Int, geometry: PageGeometry) {
+    func configure(_ texts: WordDocumentHeaderFooter, page: Int, of count: Int, shape: PageGeometry.Shape) {
         layer.shadowPath = UIBezierPath(rect: bounds).cgPath
+        let section = texts.section(forPage: page)
         for (label, text, isFooter) in [(headerLabel, texts.header(forPage: page), false),
                                         (footerLabel, texts.footer(forPage: page), true)] {
             guard let text else {
@@ -294,14 +316,14 @@ final class PageBackgroundView: UIView {
             }
             label.isHidden = false
             label.attributedText = HeaderFooterDrawing.attributed(text, page: page, of: count, color: .secondaryLabel)
-            let width = geometry.contentWidth
+            let width = shape.contentWidth
             let size = label.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
-            let height = min(size.height, isFooter ? geometry.margins.bottom : geometry.margins.top)
+            let height = min(size.height, isFooter ? shape.margins.bottom : shape.margins.top)
             // Word measures the header down from the top edge, the footer up from the bottom.
             let y = isFooter
-                ? bounds.height - texts.footerDistance - height
-                : texts.headerDistance
-            label.frame = CGRect(x: geometry.margins.left, y: y, width: width, height: height)
+                ? bounds.height - section.footerDistance - height
+                : section.headerDistance
+            label.frame = CGRect(x: shape.margins.left, y: y, width: width, height: height)
         }
     }
 }

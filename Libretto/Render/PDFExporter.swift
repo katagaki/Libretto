@@ -4,7 +4,6 @@ import UIKit
 /// Prints a document to PDF, laid out in pages exactly as the page view shows it.
 enum PDFExporter {
     static func data(from document: WordDocument) -> Data {
-        let geometry = PageGeometry(setup: document.pageSetup, gap: 0)
         let context = RenderContext(document: document, scheme: .light, images: ImageStore())
         let rendered = DocumentRenderer.render(document.body, context: context)
 
@@ -12,40 +11,48 @@ enum PDFExporter {
         if let language = document.sourceLanguage {
             SyntaxHighlighter.apply(language, to: storage, scheme: .light, plainColor: context.defaultTextColor)
         }
-        let layoutManager = PageLayoutManager(geometry: geometry)
+        let layoutManager = PageLayoutManager(geometry: PageGeometry(setup: document.pageSetup, gap: 0))
         layoutManager.styles = document.styles
         layoutManager.footnotes = NoteLayout.notes(in: storage, document: document, context: context)
+        layoutManager.sections = SectionLayout.spans(in: storage, final: document.pageSetup)
         let container = NSTextContainer()
         layoutManager.addTextContainer(container)
         storage.addLayoutManager(layoutManager)
         let pages = layoutManager.layOutPages(in: container, startingWith: 4)
+        // The pages as they settled, each section's at its own size.
+        let geometry = layoutManager.geometry
+        let texts = WordDocumentHeaderFooter(
+            document: document, sections: layoutManager.sections.map(\.setup), pageSections: layoutManager.pageSections
+        )
 
-        let bounds = CGRect(origin: .zero, size: geometry.pageSize)
-        return UIGraphicsPDFRenderer(bounds: bounds).pdfData { pdf in
+        return UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: geometry.pageSize)).pdfData { pdf in
             for page in 0..<pages {
-                pdf.beginPage()
+                let shape = geometry.shape(page)
+                // Each page its own size: the media box must say so, as well as the bounds.
+                var box = CGRect(origin: .zero, size: shape.size)
+                pdf.beginPage(withBounds: box, pageInfo: [
+                    kCGPDFContextMediaBox as String: Data(bytes: &box, count: MemoryLayout<CGRect>.size),
+                ])
                 let graphics = pdf.cgContext
-                let contentTop = CGFloat(page) * geometry.pitch
-                let visible = CGRect(x: 0, y: contentTop, width: geometry.contentWidth, height: geometry.contentHeight)
+                let top = geometry.textTop(page)
+                let visible = CGRect(x: 0, y: top, width: geometry.contentWidth, height: shape.contentHeight)
                 let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
-                let origin = CGPoint(x: geometry.margins.left, y: geometry.margins.top - contentTop)
+                let origin = CGPoint(x: geometry.textLeft, y: shape.margins.top - top)
 
                 graphics.saveGState()
                 graphics.clip(to: CGRect(
-                    x: geometry.margins.left - 40, y: geometry.margins.top - 2,
-                    width: geometry.contentWidth + 80, height: geometry.contentHeight + 4
+                    x: shape.margins.left - 40, y: shape.margins.top - 2,
+                    width: shape.contentWidth + 80, height: shape.contentHeight + 4
                 ))
                 layoutManager.drawBackground(forGlyphRange: glyphs, at: origin)
                 layoutManager.drawGlyphs(forGlyphRange: glyphs, at: origin)
                 graphics.restoreGState()
 
-                HeaderFooterDrawing.draw(
-                    document: document, page: page, of: pages, geometry: geometry, color: .darkGray
-                )
+                HeaderFooterDrawing.draw(texts, page: page, of: pages, shape: shape, color: .darkGray)
                 if let notes = layoutManager.notesByPage[page], let height = layoutManager.noteHeights[page] {
                     PageLayoutManager.drawNotes(notes, in: CGRect(
-                        x: geometry.margins.left, y: geometry.margins.top + geometry.contentHeight - height,
-                        width: geometry.contentWidth, height: height
+                        x: shape.margins.left, y: shape.margins.top + shape.contentHeight - height,
+                        width: shape.contentWidth, height: height
                     ), color: .black)
                 }
             }
@@ -57,16 +64,15 @@ enum PDFExporter {
 enum HeaderFooterDrawing {
     static let font = UIFont.systemFont(ofSize: 9)
 
-    static func frames(document: WordDocument, geometry: PageGeometry) -> (header: CGRect, footer: CGRect) {
+    static func frames(_ section: WordDocumentHeaderFooter.Section, shape: PageGeometry.Shape) -> (header: CGRect, footer: CGRect) {
         let header = CGRect(
-            x: geometry.margins.left, y: CGFloat(document.pageSetup.headerDistance) / 20,
-            width: geometry.contentWidth, height: max(12, geometry.margins.top - CGFloat(document.pageSetup.headerDistance) / 20)
+            x: shape.margins.left, y: section.headerDistance,
+            width: shape.contentWidth, height: max(12, shape.margins.top - section.headerDistance)
         )
         let footerHeight: CGFloat = 24
         let footer = CGRect(
-            x: geometry.margins.left,
-            y: geometry.pageSize.height - CGFloat(document.pageSetup.footerDistance) / 20 - footerHeight,
-            width: geometry.contentWidth, height: footerHeight
+            x: shape.margins.left, y: shape.size.height - section.footerDistance - footerHeight,
+            width: shape.contentWidth, height: footerHeight
         )
         return (header, footer)
     }
@@ -86,9 +92,8 @@ enum HeaderFooterDrawing {
         )
     }
 
-    static func draw(document: WordDocument, page: Int, of count: Int, geometry: PageGeometry, color: UIColor) {
-        let frames = frames(document: document, geometry: geometry)
-        let texts = WordDocumentHeaderFooter(document: document)
+    static func draw(_ texts: WordDocumentHeaderFooter, page: Int, of count: Int, shape: PageGeometry.Shape, color: UIColor) {
+        let frames = frames(texts.section(forPage: page), shape: shape)
         if let header = texts.header(forPage: page) {
             attributed(header, page: page, of: count, color: color)
                 .draw(with: frames.header, options: [.usesLineFragmentOrigin], context: nil)

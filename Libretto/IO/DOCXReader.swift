@@ -56,10 +56,15 @@ enum DOCXReader {
         if parts.keys.contains(where: { $0.lowercased().hasSuffix("vbaproject.bin") }) { report.insert(.macros) }
 
 
-        // Every header and footer a section refers to, by relationship.
+        // Every header and footer a section refers to, by relationship, the last section's and the others'.
         var headerFooters: [String: HeaderFooterText] = [:]
-        for (id, isFooter) in pageSetup.headerFooters.headers.values.map({ ($0, false) })
-            + pageSetup.headerFooters.footers.values.map({ ($0, true) }) where headerFooters[id] == nil {
+        let sections = [pageSetup] + blocks.compactMap { block -> PageSetup? in
+            if case .paragraph(let paragraph) = block { return paragraph.section } else { return nil }
+        }
+        let references = sections.flatMap { section in
+            section.headerFooters.headers.values.map { ($0, false) } + section.headerFooters.footers.values.map { ($0, true) }
+        }
+        for (id, isFooter) in references where headerFooters[id] == nil {
             guard let relationship = relationships[id],
                   let data = parts[DOCXPaths.resolve(relationship.target, relativeTo: documentPath)],
                   let xml = try? XMLLite.parse(data) else { continue }
@@ -195,7 +200,12 @@ private final class ReadContext {
             paragraph.properties = PropertyReader.paragraphProperties(from: pPr)
             paragraph.originalProperties = paragraph.properties
             paragraph.preservedPropertiesXML = serialize(pPr)
-            if pPr.firstChild(named: "sectPr") != nil { report.insert(.sections) }
+            if let sectPr = pPr.firstChild(named: "sectPr") {
+                var section = PageSetupReader.pageSetup(from: sectPr)
+                section.preservedXML = serialize(sectPr)
+                section.original = section.values
+                paragraph.section = section
+            }
             if let mark = pPr.firstChild(named: "rPr")?.children
                 .first(where: { Revision.Kind(rawValue: $0.name) != nil }) {
                 paragraph.markRevision = revision(from: mark)
@@ -300,7 +310,11 @@ private final class ReadContext {
             case "tab":
                 add(.tab)
             case "br":
-                add(child.attribute("type") == "page" ? .pageBreak : .lineBreak)
+                switch child.attribute("type") {
+                case "page": add(.pageBreak)
+                case "column": add(.columnBreak)
+                default: add(.lineBreak)
+                }
             case "cr":
                 add(.lineBreak)
             case "noBreakHyphen":
@@ -768,6 +782,11 @@ enum PageSetupReader {
             }
         }
         setup.headerFooters.titlePage = PropertyReader.isOn(sectPr.firstChild(named: "titlePg")) ?? false
+        setup.start = sectPr.firstChild(named: "type")?.attribute("val").flatMap(SectionStart.init(rawValue:)) ?? .nextPage
+        if let columns = sectPr.firstChild(named: "cols") {
+            setup.columns = max(1, value(columns, "num") ?? 1)
+            setup.columnSpacing = value(columns, "space") ?? setup.columnSpacing
+        }
         setup.originalHeaderFooters = setup.headerFooters
         return setup
     }

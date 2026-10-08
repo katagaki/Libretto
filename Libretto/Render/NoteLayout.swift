@@ -41,3 +41,21 @@ enum NoteLayout {
         return result
     }
 }
+
+/// The document's sections as the layout needs them: where each ends in the
+/// text, at its section break's paragraph mark, and its page setup.
+enum SectionLayout {
+    static func spans(in text: NSAttributedString, final: PageSetup) -> [PageLayoutManager.SectionSpan] {
+        var spans: [PageLayoutManager.SectionSpan] = []
+        let string = text.string as NSString
+        text.enumerateAttribute(.librettoParagraph, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            guard let box = value as? ParagraphBox, let section = box.paragraph.section else { return }
+            // The paragraph's mark: the last character of its range that ends a paragraph.
+            let end = NSMaxRange(range) - 1
+            guard end >= 0, end < string.length, string.character(at: end) == TextCharacters.paragraphBreakUnit,
+                  spans.last?.end != end else { return }
+            spans.append(PageLayoutManager.SectionSpan(end: end, setup: section))
+        }
+        return spans + [PageLayoutManager.SectionSpan(end: Int.max, setup: final)]
+    }
+}

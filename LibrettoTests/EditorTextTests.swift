@@ -109,15 +109,19 @@ struct EditorTextTests {
         let glyph = layoutManager.glyphIndexForCharacter(at: location)
         let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
         #expect(geometry.page(containing: line.minY) == 1)
-        #expect(line.minY - geometry.pitch < 1)
+        #expect(line.minY - layoutManager.geometry.textTop(1) < 1)
     }
 
-    @Test("A PDF has a page per page")
+    @Test("A PDF has a page per page, each section's at its own size")
     func pdf() throws {
         let data = PDFExporter.data(from: try Fixtures.document())
         #expect(data.starts(with: Array("%PDF".utf8)))
         let pdf = try #require(CGPDFDocument(CGDataProvider(data: data as CFData)!))
-        #expect(pdf.numberOfPages == 2)
+        // The page break, then the section break after the appendix's heading.
+        #expect(pdf.numberOfPages == 3)
+        let sizes = (1...3).map { pdf.page(at: $0)?.getBoxRect(.mediaBox).size }
+        #expect(sizes[1].map { abs($0.width - 595.3) < 1 && abs($0.height - 841.9) < 1 } == true)
+        #expect(sizes[2] == CGSize(width: 612, height: 792))
     }
 
     @Test("The reader lays every block out, and makes one space of many")

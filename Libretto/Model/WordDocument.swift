@@ -191,6 +191,8 @@ struct Paragraph: Equatable, Sendable, Identifiable {
     /// `w:pPr/w:rPr`, and what it was when read.
     var markRevision: Revision?
     var originalMarkRevision: Revision?
+    /// The section this paragraph ends, from the `w:sectPr` in its properties.
+    var section: PageSetup?
 
     init(
         id: UUID = UUID(), inlines: [Inline] = [], properties: ParagraphProperties = ParagraphProperties(),
@@ -227,6 +229,7 @@ struct Paragraph: Equatable, Sendable, Identifiable {
         copy.originalXML = nil
         copy.originalInlines = nil
         copy.originalMarkRevision = nil
+        copy.section = nil
         // Paragraph IDs must be unique; Word assigns the copy fresh ones.
         copy.attributesXML = DOCXPatcher.removingParagraphIDs(fromAttributes: attributesXML)
         copy.preservedPropertiesXML = preservedPropertiesXML.flatMap { DOCXPatcher.removingSectionBreak(fromPPr: $0) }
@@ -429,7 +432,7 @@ struct Inline: Equatable, Sendable {
         case .text(let text): return text
         case .tab: return "\t"
         case .lineBreak: return "\n"
-        case .pageBreak: return ""
+        case .pageBreak, .columnBreak: return ""
         case .image, .note: return ""
         case .runChild(_, let display), .paragraphChild(_, let display): return display ?? ""
         }
@@ -441,6 +444,8 @@ enum InlineContent: Equatable, Sendable {
     case tab
     case lineBreak
     case pageBreak
+    /// `w:br w:type="column"`, which ends a column, and in a single column, the page.
+    case columnBreak
     case image(InlineImage)
     /// A child of `w:r` Libretto keeps as it is: a field character, a
     /// footnote reference. `display` is what it reads as, if anything; `nil`
@@ -665,6 +670,11 @@ struct PageSetup: Equatable, Sendable {
     /// Which header and footer parts the section shows, and whether its first page has its own.
     var headerFooters = HeaderFooterReferences()
     var originalHeaderFooters: HeaderFooterReferences?
+    /// How the section starts: on a new page, the same page, or the next even or odd page.
+    var start: SectionStart = .nextPage
+    /// Text columns, and the space between them, in twips.
+    var columns = 1
+    var columnSpacing = 708
     var preservedXML: String?
     var original: PageSetupValues?
 
@@ -672,19 +682,36 @@ struct PageSetup: Equatable, Sendable {
 
     struct PageSetupValues: Equatable, Sendable {
         var width, height, marginTop, marginBottom, marginLeft, marginRight: Int
+        var start: SectionStart = .nextPage
+        var columns = 1
+        var columnSpacing = 708
     }
 
     var values: PageSetupValues {
         PageSetupValues(
             width: width, height: height, marginTop: marginTop, marginBottom: marginBottom,
-            marginLeft: marginLeft, marginRight: marginRight
+            marginLeft: marginLeft, marginRight: marginRight, start: start, columns: columns, columnSpacing: columnSpacing
         )
+    }
+
+    /// Whether anything differs from the section as read.
+    var isChanged: Bool {
+        preservedXML == nil || original != values || headerFooters != (originalHeaderFooters ?? HeaderFooterReferences())
     }
 
     /// Points, the unit the page view lays out in.
     var size: CGSize { CGSize(width: Double(width) / 20, height: Double(height) / 20) }
     var contentWidth: Double { Double(width - marginLeft - marginRight) / 20 }
     var contentHeight: Double { Double(height - marginTop - marginBottom) / 20 }
+}
+
+/// `w:sectPr/w:type`: where a section starts.
+enum SectionStart: String, CaseIterable, Sendable {
+    case nextPage
+    case continuous
+    case evenPage
+    case oddPage
+    case nextColumn
 }
 
 /// The header and footer parts a section shows on each kind of page, by relationship ID.

@@ -21,7 +21,10 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     let textView: DocumentTextView
     let view: PagedDocumentView
 
-    private(set) var geometry: PageGeometry
+    /// The last section's page, which a change of page setup is told by.
+    private var baseGeometry: PageGeometry
+    /// The pages as laid out, each section's at its own size.
+    var geometry: PageGeometry { layoutManager.geometry }
     var context: RenderContext
     private let images = ImageStore()
     /// The body the text was last rendered from or read back as.
@@ -51,7 +54,8 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     init(document: WordDocument, scheme: ColorScheme) {
         self.document = document
         self.scheme = scheme
-        geometry = PageGeometry(setup: document.pageSetup, gap: PagedDocumentView.pageGap)
+        baseGeometry = PageGeometry(setup: document.pageSetup, gap: PagedDocumentView.pageGap)
+        let geometry = baseGeometry
         context = RenderContext(document: document, scheme: scheme, images: images)
         layoutManager = PageLayoutManager(geometry: geometry)
         storage.addLayoutManager(layoutManager)
@@ -75,9 +79,9 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
 
     func refreshContext() {
         context = RenderContext(document: document, scheme: scheme, images: images)
-        context.contentWidth = geometry.contentWidth
-        context.contentHeight = geometry.contentHeight
-        layoutManager.geometry = geometry
+        // Tables and pictures fit whichever page they fall on.
+        context.contentWidth = min(baseGeometry.contentWidth, layoutManager.geometry.narrowestWidth)
+        context.contentHeight = min(baseGeometry.contentHeight, layoutManager.geometry.contentHeight)
         layoutManager.styles = document.styles
         layoutManager.scheme = scheme
     }
@@ -106,9 +110,13 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     func relayout() {
         refreshCommentRanges()
         layoutManager.footnotes = NoteLayout.notes(in: storage, document: document, context: context)
+        layoutManager.sections = SectionLayout.spans(in: storage, final: document.pageSetup)
         pageCount = layoutManager.layOutPages(in: container, startingWith: pageCount)
         view.update(
-            geometry: geometry, pages: pageCount, texts: WordDocumentHeaderFooter(document: document),
+            geometry: geometry, pages: pageCount,
+            texts: WordDocumentHeaderFooter(
+                document: document, sections: layoutManager.sections.map(\.setup), pageSections: layoutManager.pageSections
+            ),
             notes: PageNotes(byPage: layoutManager.notesByPage, heights: layoutManager.noteHeights)
         )
     }
@@ -118,7 +126,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     func update(document new: WordDocument, scheme newScheme: ColorScheme) {
         guard new != document || newScheme != scheme else { return }
         let newGeometry = PageGeometry(setup: new.pageSetup, gap: PagedDocumentView.pageGap)
-        let needsRender = newScheme != scheme || newGeometry != geometry || new.body != lastBody
+        let needsRender = newScheme != scheme || newGeometry != baseGeometry || new.body != lastBody
             || new.styles != document.styles || new.numbering != document.numbering
         let marginsChanged = WordDocumentHeaderFooter(document: new) != WordDocumentHeaderFooter(document: document)
             || new.notes != document.notes
@@ -129,7 +137,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         }
         document = new
         scheme = newScheme
-        geometry = newGeometry
+        baseGeometry = newGeometry
         if needsRender {
             render()
         } else {
@@ -912,7 +920,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     }
 
     func insertTable(rows: Int, columns: Int) {
-        let columnWidth = Int(geometry.contentWidth * 20) / max(1, columns)
+        let columnWidth = Int(context.contentWidth * 20) / max(1, columns)
         let table = Table(
             rows: (0..<rows).map { _ in
                 TableRow(cells: (0..<columns).map { _ in TableCell(blocks: [.paragraph(Paragraph())]) })
@@ -958,7 +966,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             fileExtension: fileExtension, contentType: contentType
         )
         refreshContext()
-        let scale = min(1, geometry.contentWidth / max(image.size.width, 1))
+        let scale = min(1, context.contentWidth / max(image.size.width, 1))
         let picture = InlineImage(
             relationshipID: id, width: image.size.width * scale, height: image.size.height * scale, xml: nil
         )

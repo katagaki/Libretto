@@ -107,6 +107,13 @@ struct FloatingActionBar: View {
             Button("Insert.Picture", systemImage: "photo") { state.isPickingPhoto = true }
             Button("Insert.Link", systemImage: "link") { state.presentedPanel = .link }
             Button("Insert.PageBreak", systemImage: "doc.on.doc") { controller?.insertPageBreak() }
+            Menu("Insert.Breaks", systemImage: "rectangle.split.1x2") {
+                Button("Insert.ColumnBreak") { controller?.insertColumnBreak() }
+                Button("Insert.SectionNextPage") { controller?.insertSectionBreak(.nextPage) }
+                Button("Insert.SectionContinuous") { controller?.insertSectionBreak(.continuous) }
+                Button("Insert.SectionEvenPage") { controller?.insertSectionBreak(.evenPage) }
+                Button("Insert.SectionOddPage") { controller?.insertSectionBreak(.oddPage) }
+            }
             Button("Insert.HeaderFooter", systemImage: "menubar.rectangle") { state.presentedPanel = .headerFooter }
             Button("Insert.Comment", systemImage: "plus.bubble") { state.presentedPanel = .comments }
             Button("Insert.Footnote", systemImage: "text.append") { insertNote(.footnote) }

@@ -213,7 +213,7 @@ struct MobileTextBuilder {
             case .text(let text): string = text
             case .tab: string = "  "
             case .lineBreak: string = "\n"
-            case .pageBreak, .image: continue
+            case .pageBreak, .columnBreak, .image: continue
             case .runChild(_, let display), .paragraphChild(_, let display):
                 guard let display, !display.isEmpty else { continue }
                 string = display

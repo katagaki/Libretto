@@ -92,6 +92,8 @@ enum DocumentRenderer {
                 string = TextCharacters.lineBreak
             case .pageBreak:
                 string = TextCharacters.pageBreak
+            case .columnBreak:
+                string = TextCharacters.columnBreak
             case .image(let image):
                 attributes[.attachment] = imageAttachment(
                     image, inline: inline, context: context,

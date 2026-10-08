@@ -8,7 +8,9 @@ struct HeaderFooterPanel: View {
     @Bindable var state: EditorState
     @State private var kind: HeaderFooterKind = .default
 
-    private var references: HeaderFooterReferences { document.pageSetup.headerFooters }
+    /// The section the selection is in, whose headers and footers these are.
+    private var section: PageSetup { state.controller?.currentSection.setup ?? document.pageSetup }
+    private var references: HeaderFooterReferences { section.headerFooters }
 
     private var kinds: [HeaderFooterKind] {
         [.default] + (references.titlePage ? [.first] : []) + (document.evenAndOddHeaders ? [.even] : [])
@@ -19,7 +21,7 @@ struct HeaderFooterPanel: View {
             Section {
                 Toggle("HeaderFooter.DifferentFirstPage", isOn: Binding(
                     get: { references.titlePage },
-                    set: { isOn in change { $0.pageSetup.headerFooters.titlePage = isOn } }
+                    set: { isOn in changeSection { $0.headerFooters.titlePage = isOn } }
                 ))
                 .accessibilityIdentifier("headerFooter.firstPage")
                 Toggle("HeaderFooter.DifferentOddEven", isOn: Binding(
@@ -50,7 +52,7 @@ struct HeaderFooterPanel: View {
     }
 
     private func current(isFooter: Bool) -> HeaderFooterText? {
-        document.headerFooter(kind, isFooter: isFooter, in: document.pageSetup)
+        document.headerFooter(kind, isFooter: isFooter, in: section)
     }
 
     private func editor(isFooter: Bool) -> some View {
@@ -96,29 +98,40 @@ struct HeaderFooterPanel: View {
     /// Changes the header or footer this kind of page shows, giving it a part of its own if it has none.
     private func edit(isFooter: Bool, _ change: (inout HeaderFooterText) -> Void) {
         let kind = kind
-        self.change { document in
-            let references = isFooter ? document.pageSetup.headerFooters.footers : document.pageSetup.headerFooters.headers
-            if let id = references[kind], var text = document.headerFooters[id] {
-                change(&text)
-                text.isEdited = true
-                document.headerFooters[id] = text
-                return
-            }
-            // A new part looks like the default one, if there is one.
-            var text = document.headerFooter(.default, isFooter: isFooter, in: document.pageSetup)
-                .map { HeaderFooterText(text: "", alignment: $0.alignment, isFooter: isFooter,
-                                        paragraphPropertiesXML: $0.paragraphPropertiesXML,
-                                        runPropertiesXML: $0.runPropertiesXML) }
-                ?? HeaderFooterText(text: "", isFooter: isFooter)
+        let section = section
+        let references = isFooter ? section.headerFooters.footers : section.headerFooters.headers
+        if let id = references[kind], var text = document.headerFooters[id] {
             change(&text)
             text.isEdited = true
-            let id = document.unusedHeaderFooterID(isFooter: isFooter)
-            document.headerFooters[id] = text
+            self.change { $0.headerFooters[id] = text }
+            return
+        }
+        // A new part looks like the default one, if there is one.
+        var text = document.headerFooter(.default, isFooter: isFooter, in: section)
+            .map { HeaderFooterText(text: "", alignment: $0.alignment, isFooter: isFooter,
+                                    paragraphPropertiesXML: $0.paragraphPropertiesXML,
+                                    runPropertiesXML: $0.runPropertiesXML) }
+            ?? HeaderFooterText(text: "", isFooter: isFooter)
+        change(&text)
+        text.isEdited = true
+        let id = document.unusedHeaderFooterID(isFooter: isFooter)
+        self.change { $0.headerFooters[id] = text }
+        changeSection { setup in
             if isFooter {
-                document.pageSetup.headerFooters.footers[kind] = id
+                setup.headerFooters.footers[kind] = id
             } else {
-                document.pageSetup.headerFooters.headers[kind] = id
+                setup.headerFooters.headers[kind] = id
             }
+        }
+    }
+
+    /// Changes the setup of the section the selection is in.
+    private func changeSection(_ edit: (inout PageSetup) -> Void) {
+        state.pendingScope = .headerFooter
+        if let controller = state.controller {
+            controller.updateSection(edit)
+        } else {
+            edit(&document.pageSetup)
         }
     }
 

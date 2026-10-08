@@ -145,11 +145,14 @@ enum TextCharacters {
     static let paragraphBreak: Character = "\n"
     static let lineBreak = "\u{2028}"
     static let pageBreak = "\u{0C}"
+    /// A column break, which in one column ends the page.
+    static let columnBreak = "\u{0B}"
     static let attachment = "\u{FFFC}"
 
     static let paragraphBreakUnit: unichar = 0x0A
     static let lineBreakUnit: unichar = 0x2028
     static let pageBreakUnit: unichar = 0x0C
+    static let columnBreakUnit: unichar = 0x0B
     static let attachmentUnit: unichar = 0xFFFC
     static let tabUnit: unichar = 0x09
 }
