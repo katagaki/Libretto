@@ -56,6 +56,39 @@ struct FieldUpdateTests {
         #expect(latest()?.allParagraphs.first?.plainText == "IntroDetails111")
     }
 
+    @Test("A table of contents lists the headings with their pages, and is built afresh when they change")
+    func contents() throws {
+        var document = WordDocument()
+        var intro = Paragraph(text: "Introduction")
+        intro.properties.styleID = document.styles.ensureStyle(.heading1)
+        var detail = Paragraph(text: "Detail")
+        detail.properties.styleID = document.styles.ensureStyle(.heading2)
+        detail.properties.pageBreakBefore = true
+        document.body = [.paragraph(Paragraph(text: "")), .paragraph(intro), .paragraph(Paragraph(text: "Body")), .paragraph(detail)]
+        let controller = DocumentTextController(document: document, scheme: .light)
+        var latest: WordDocument?
+        controller.onChange = { latest = $0 }
+        controller.textView.selectedRange = NSRange(location: 0, length: 0)
+        controller.insertTableOfContents()
+
+        let withContents = try #require(latest)
+        let texts = withContents.allParagraphs.map(\.plainText)
+        #expect(texts.prefix(2) == ["Introduction\t1", "Detail\t2"])
+        #expect(withContents.allParagraphs[0].properties.styleID == "TOC1")
+        #expect(withContents.allParagraphs[1].properties.styleID == "TOC2")
+        #expect(withContents.allParagraphs[1].inlines.first?.hyperlink?.anchor?.hasPrefix("_Toc") == true)
+        let xml = Fixtures.text(try Fixtures.written(withContents), "word/document.xml")
+        #expect(xml.contains(" TOC \\o &quot;1-3&quot; \\h \\z \\u "))
+        #expect(xml.contains("w:anchor=\"_Toc"))
+
+        // The heading is renamed; building the contents afresh follows it.
+        let headingStart = (controller.textView.textStorage.string as NSString).range(of: "Detail", options: .backwards).location
+        controller.textView.selectedRange = NSRange(location: headingStart, length: 6)
+        controller.textView.insertText("Findings")
+        controller.updateTableOfContents()
+        #expect(latest?.allParagraphs.prefix(2).map(\.plainText) == ["Introduction\t1", "Findings\t2"])
+    }
+
     @Test("Fields read from a file are worked out afresh, and others are left as they are")
     func fromFile() throws {
         let document = try Fixtures.document()

@@ -355,6 +355,8 @@ S = {
  "Caption.Figure": ["Figure", "図", "그림", "图", "圖"],
  "Caption.Table": ["Table", "表", "표", "表", "表"],
  "Caption.Equation": ["Equation", "数式", "수식", "公式", "方程式"],
+ "Insert.Contents": ["Table of Contents", "目次", "목차", "目录", "目錄"],
+ "Contents.Empty": ["No headings for a table of contents", "目次にする見出しがありません", "목차를 만들 제목이 없습니다", "没有可用于目录的标题", "沒有可用於目錄的標題"],
 }
 
 reuse = ["Alert.Error.Title", "Common.OK", "Format.ClearAll", "Format.Section.Text", "Format.Text.Size",

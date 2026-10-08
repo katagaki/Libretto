@@ -250,6 +250,7 @@ struct DocumentView: View {
                     .accessibilityIdentifier("navigator")
                     Button("Toolbar.UpdateFields", systemImage: "arrow.clockwise") {
                         setMode(.page)
+                        state.controller?.updateTableOfContents()
                         state.controller?.updateFields()
                     }
                 }

@@ -211,6 +211,24 @@ struct StyleSheet: Equatable, Sendable {
         return id
     }
 
+    /// A table of contents' style for a heading level, Word's `toc 1` to `toc 9`,
+    /// added if the document lacks it: indented by level, its page number at a dotted right tab.
+    mutating func ensureContentsStyle(level: Int, width: Int) -> String {
+        let name = "toc \(level)"
+        if let existing = styles.values.first(where: { $0.kind == .paragraph && $0.name.lowercased() == name }) {
+            return existing.id
+        }
+        let id = "TOC\(level)"
+        var style = Style(id: id, name: name, kind: .paragraph, basedOn: defaultParagraphStyleID, next: defaultParagraphStyleID)
+        style.paragraphProperties = ParagraphProperties(
+            spacingAfter: 100, indentLeft: (level - 1) * 220,
+            tabStops: [TabStop(position: max(1440, width), alignment: .right, leader: "dot")]
+        )
+        style.isCreated = true
+        styles[id] = style
+        return id
+    }
+
     /// Which of the menu's styles a paragraph is in.
     func choice(forStyle id: String?) -> ParagraphStyleChoice? {
         let resolvedID = id ?? defaultParagraphStyleID
