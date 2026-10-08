@@ -248,10 +248,20 @@ struct ParagraphProperties: Equatable, Hashable, Sendable {
     var indentFirstLine: Int?
     var pageBreakBefore: Bool?
     var outlineLevel: Int?
+    var keepNext: Bool?
+    var keepLines: Bool?
+    var widowControl: Bool?
+    /// Six-digit RGB behind the paragraph.
+    var shadingHex: String?
+    var borders: ParagraphBorders?
+    /// Tab stops, in twips from the margin; a style's are added to, or cleared by, a paragraph's own.
+    var tabStops: [TabStop]?
+    /// A large initial letter, from `w:framePr`'s drop cap: dropped into the text or set in the margin.
+    var dropCap: DropCap?
 
     /// Overlays `other`'s set values onto these, as a style inherits.
     func merged(with other: ParagraphProperties) -> ParagraphProperties {
-        ParagraphProperties(
+        var result = ParagraphProperties(
             styleID: other.styleID ?? styleID,
             alignment: other.alignment ?? alignment,
             list: other.list ?? list,
@@ -262,9 +272,76 @@ struct ParagraphProperties: Equatable, Hashable, Sendable {
             indentRight: other.indentRight ?? indentRight,
             indentFirstLine: other.indentFirstLine ?? indentFirstLine,
             pageBreakBefore: other.pageBreakBefore ?? pageBreakBefore,
-            outlineLevel: other.outlineLevel ?? outlineLevel
+            outlineLevel: other.outlineLevel ?? outlineLevel,
+            keepNext: other.keepNext ?? keepNext,
+            keepLines: other.keepLines ?? keepLines,
+            widowControl: other.widowControl ?? widowControl,
+            shadingHex: other.shadingHex ?? shadingHex,
+            borders: other.borders ?? borders,
+            tabStops: tabStops,
+            dropCap: other.dropCap ?? dropCap
         )
+        if let added = other.tabStops {
+            var stops = tabStops ?? []
+            for stop in added {
+                stops.removeAll { $0.position == stop.position }
+                if stop.alignment != .clear { stops.append(stop) }
+            }
+            result.tabStops = stops.sorted { $0.position < $1.position }
+        }
+        return result
     }
+}
+
+/// A paragraph's borders, side by side, and the one between it and a like paragraph.
+struct ParagraphBorders: Equatable, Hashable, Sendable {
+    var top: BorderLine?
+    var left: BorderLine?
+    var bottom: BorderLine?
+    var right: BorderLine?
+    var between: BorderLine?
+
+    var isEmpty: Bool { top == nil && left == nil && bottom == nil && right == nil && between == nil }
+}
+
+/// One border line, as `w:top` and its siblings spell it.
+struct BorderLine: Equatable, Hashable, Sendable {
+    /// `w:val`: `single`, `double`, `dotted`, `dashed`, `thick` and the rest.
+    var style = "single"
+    /// Eighths of a point.
+    var size = 4
+    /// Six-digit RGB, or `nil` for automatic.
+    var colorHex: String?
+    /// Points between the line and the text.
+    var space = 1
+}
+
+struct TabStop: Equatable, Hashable, Sendable {
+    enum Alignment: String, CaseIterable, Sendable {
+        case left, center, right, decimal, bar, clear
+
+        /// Reads `w:tab`'s `w:val`, which also spells left and right as start and end.
+        init?(ooxml value: String) {
+            switch value {
+            case "left", "start", "num": self = .left
+            case "right", "end": self = .right
+            default: self.init(rawValue: value)
+            }
+        }
+    }
+
+    /// Twips from the margin.
+    var position: Int
+    var alignment: Alignment = .left
+    /// `w:leader`: `dot`, `hyphen`, `underscore`, `middleDot`, or `nil` for none.
+    var leader: String?
+}
+
+struct DropCap: Equatable, Hashable, Sendable {
+    /// `drop` sets the letter in the text; `margin`, beside it.
+    var inMargin = false
+    /// How many lines tall the letter is.
+    var lines = 3
 }
 
 enum ParagraphAlignment: String, CaseIterable, Sendable {

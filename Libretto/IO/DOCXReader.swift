@@ -459,7 +459,41 @@ enum PropertyReader {
         }
         result.pageBreakBefore = isOn(pPr.firstChild(named: "pageBreakBefore"))
         result.outlineLevel = pPr.firstChild(named: "outlineLvl")?.attribute("val").flatMap { Int($0) }
+        result.keepNext = isOn(pPr.firstChild(named: "keepNext"))
+        result.keepLines = isOn(pPr.firstChild(named: "keepLines"))
+        result.widowControl = isOn(pPr.firstChild(named: "widowControl"))
+        result.shadingHex = pPr.firstChild(named: "shd").flatMap(fill)
+        if let pBdr = pPr.firstChild(named: "pBdr") {
+            var borders = ParagraphBorders()
+            borders.top = borderLine(pBdr.firstChild(named: "top"))
+            borders.left = borderLine(pBdr.firstChild(named: "left") ?? pBdr.firstChild(named: "start"))
+            borders.bottom = borderLine(pBdr.firstChild(named: "bottom"))
+            borders.right = borderLine(pBdr.firstChild(named: "right") ?? pBdr.firstChild(named: "end"))
+            borders.between = borderLine(pBdr.firstChild(named: "between"))
+            result.borders = borders
+        }
+        if let tabs = pPr.firstChild(named: "tabs") {
+            result.tabStops = tabs.children(named: "tab").compactMap { tab in
+                guard let position = tab.attribute("pos").flatMap({ Int($0) }),
+                      let alignment = tab.attribute("val").flatMap(TabStop.Alignment.init(ooxml:)) else { return nil }
+                let leader = tab.attribute("leader").flatMap { $0 == "none" ? nil : $0 }
+                return TabStop(position: position, alignment: alignment, leader: leader)
+            }
+        }
+        if let frame = pPr.firstChild(named: "framePr"), let kind = frame.attribute("dropCap"), kind != "none" {
+            result.dropCap = DropCap(inMargin: kind == "margin", lines: frame.attribute("lines").flatMap { Int($0) } ?? 3)
+        }
         return result
+    }
+
+    /// A border, unless it says there is none.
+    static func borderLine(_ element: XMLElement?) -> BorderLine? {
+        guard let element, let style = element.attribute("val"), style != "nil", style != "none" else { return nil }
+        let color = element.attribute("color").flatMap { $0 == "auto" ? nil : $0.uppercased() }
+        return BorderLine(
+            style: style, size: element.attribute("sz").flatMap { Int($0) } ?? 4, colorHex: color,
+            space: element.attribute("space").flatMap { Int($0) } ?? 0
+        )
     }
 
     static func runStyle(from rPr: XMLElement) -> RunStyle {

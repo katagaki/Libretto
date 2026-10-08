@@ -124,6 +124,14 @@ struct SelectionFormat: Equatable {
     var spacingBefore = 0
     var spacingAfter = 0
     var lineSpacing: Double = 1
+    var keepNext = false
+    var keepLines = false
+    var widowControl = false
+    var pageBreakBefore = false
+    var shadingHex: String?
+    var borders: ParagraphBorders?
+    var tabStops: [TabStop] = []
+    var dropCap: DropCap?
 }
 
 /// Everything about the editing session that isn't part of the document itself.

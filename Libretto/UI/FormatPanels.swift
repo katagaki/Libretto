@@ -327,6 +327,8 @@ struct ParagraphPanel: View {
                     }
                 }
             }
+
+            ParagraphDetailSections(state: state)
         }
         .formStyle(.grouped)
     }

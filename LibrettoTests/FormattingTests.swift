@@ -53,6 +53,61 @@ struct FormattingTests {
         #expect(firstParagraph(latest())?.inlines.first?.format.style.underline == nil)
     }
 
+    @Test("Page breaking settings, borders, shading and tab stops are written and read back")
+    func paragraphSettings() throws {
+        let (controller, state, latest) = makeController(text: "Total\t12.5")
+        controller.setParagraphFlag(\.keepNext, true)
+        controller.setParagraphFlag(\.widowControl, true)
+        let line = BorderLine(style: "double", size: 6, colorHex: "FF0000", space: 4)
+        controller.setBorders(ParagraphBorders(top: line, bottom: line))
+        controller.setShading("FFEEEEEE")
+        controller.setTabStops([TabStop(position: 4320, alignment: .decimal, leader: "dot")])
+        #expect(state.selectionFormat.keepNext)
+        #expect(state.selectionFormat.tabStops.first?.leader == "dot")
+
+        let document = try #require(latest())
+        let written = try xml(document)
+        #expect(written.contains("<w:keepNext/><w:widowControl/><w:pBdr>"))
+        #expect(written.contains("<w:top w:color=\"FF0000\" w:space=\"4\" w:sz=\"6\" w:val=\"double\"/>"))
+        #expect(written.contains("<w:shd w:color=\"auto\" w:fill=\"EEEEEE\" w:val=\"clear\"/>"))
+        #expect(written.contains("<w:tabs><w:tab w:leader=\"dot\" w:pos=\"4320\" w:val=\"decimal\"/></w:tabs>"))
+
+        let reread = try DOCXReader.document(from: DOCXWriter.data(from: document))
+        #expect(firstParagraph(reread)?.properties == firstParagraph(document)?.properties)
+        let paragraphStyle = controller.textView.textStorage.attribute(.paragraphStyle, at: 0, effectiveRange: nil)
+            as? NSParagraphStyle
+        #expect(paragraphStyle?.tabStops.first?.location == 216)
+    }
+
+    @Test("A style's tab stop the paragraph does without is cleared")
+    func clearsStyleTabs() {
+        let style = ParagraphProperties(tabStops: [TabStop(position: 720), TabStop(position: 1440)])
+        let own = ParagraphProperties(tabStops: [TabStop(position: 720, alignment: .clear), TabStop(position: 2160, alignment: .right)])
+        #expect(style.merged(with: own).tabStops == [TabStop(position: 1440), TabStop(position: 2160, alignment: .right)])
+    }
+
+    @Test("A heading kept with the next paragraph goes over to the next page with it")
+    func keepsWithNext() throws {
+        func pages(filler count: Int, keep: Bool) -> (heading: Int, body: Int) {
+            var document = WordDocument()
+            var heading = Paragraph(text: "Heading")
+            heading.properties.keepNext = keep
+            document.body = (0..<count).map { Block.paragraph(Paragraph(text: "Line \($0)")) }
+                + [.paragraph(heading), .paragraph(Paragraph(text: "Body after the heading."))]
+            let controller = DocumentTextController(document: document, scheme: .light)
+            let layout = controller.layoutManager
+            let text = controller.textView.textStorage.string as NSString
+            func page(of string: String) -> Int {
+                let glyph = layout.glyphIndexForCharacter(at: text.range(of: string).location)
+                return controller.geometry.page(containing: layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).midY)
+            }
+            return (page(of: "Heading"), page(of: "Body after"))
+        }
+        // Enough lines that, left to itself, the heading ends the first page, alone.
+        let count = try #require((20..<80).first { pages(filler: $0, keep: false) == (0, 1) })
+        #expect(pages(filler: count, keep: true) == (1, 1))
+    }
+
     @Test("Text in capitals is drawn with capital glyphs, and keeps its letters")
     func allCaps() throws {
         let (controller, _, latest) = makeController(text: "abc")

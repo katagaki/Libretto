@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 
 /// Where the pages are, in the text container's coordinates.
@@ -70,6 +71,8 @@ struct PageGeometry: Equatable {
 final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     var geometry: PageGeometry
     var styles = StyleSheet()
+    /// The appearance borders and shading are drawn for.
+    var scheme: ColorScheme = .light
     /// The text comments are on, shaded behind it; the comment at the
     /// selection more strongly than the rest.
     var commentRanges: [NSRange] = []
@@ -283,9 +286,22 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             || (last > 0 && string.character(at: last) == TextCharacters.paragraphBreakUnit
                 && string.character(at: last - 1) == TextCharacters.pageBreakUnit)
         if !endsPage, string.character(at: last) == TextCharacters.paragraphBreakUnit, last + 1 < string.length,
-           let box = storage.attribute(.librettoParagraph, at: last + 1, effectiveRange: nil) as? ParagraphBox,
-           styles.resolvedParagraphProperties(box.paragraph.properties).pageBreakBefore == true {
-            endsPage = true
+           storage.attribute(.librettoBlock, at: last + 1, effectiveRange: nil) == nil,
+           let box = storage.attribute(.librettoParagraph, at: last + 1, effectiveRange: nil) as? ParagraphBox {
+            let next = styles.resolvedParagraphProperties(box.paragraph.properties)
+            if next.pageBreakBefore == true {
+                endsPage = true
+            } else {
+                // What the next paragraph keeps together, if it would not fit on what is left of the page.
+                let rect = lineFragmentRect.pointee
+                let page = geometry.page(containing: rect.minY + 0.5)
+                let bottom = CGFloat(page) * geometry.pitch + geometry.contentHeight - (noteHeights[page] ?? 0)
+                let left = bottom - rect.maxY
+                if left > 0, let needed = keptHeight(startingAt: last + 1, properties: next, available: left),
+                   needed > left, needed < geometry.contentHeight * 0.9 {
+                    endsPage = true
+                }
+            }
         }
         guard endsPage else { return false }
         var rect = lineFragmentRect.pointee
@@ -296,9 +312,166 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         return true
     }
 
+    // MARK: - Keeping text together
+
+    /// How much of the paragraph starting at `start` must go on one page:
+    /// all of it, to keep its lines together or keep it with the next, with
+    /// that one's first line; its first two lines, to leave no widow at the
+    /// page's foot; or `nil` if it can break anywhere. Measured only when
+    /// it might not fit in what is `available`.
+    private func keptHeight(startingAt start: Int, properties: ParagraphProperties, available: CGFloat) -> CGFloat? {
+        guard let storage = textStorage else { return nil }
+        let keepsWhole = properties.keepLines == true || properties.keepNext == true
+        guard keepsWhole || properties.widowControl == true else { return nil }
+        let string = storage.string as NSString
+        let range = string.paragraphRange(for: NSRange(location: start, length: 0))
+        let font = storage.attribute(.font, at: start, effectiveRange: nil) as? UIFont ?? .systemFont(ofSize: 11)
+        let style = storage.attribute(.paragraphStyle, at: start, effectiveRange: nil) as? NSParagraphStyle
+        let line = font.lineHeight * max(1, style?.lineHeightMultiple ?? 1)
+        let before = style?.paragraphSpacingBefore ?? 0
+        // Plenty of room for two lines and then some: nothing more to work out.
+        if !keepsWhole, available > before + line * 2.5 { return nil }
+        func height(of range: NSRange) -> CGFloat {
+            ceil(storage.attributedSubstring(from: range).boundingRect(
+                with: CGSize(width: geometry.contentWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil
+            ).height)
+        }
+        let whole = height(of: range)
+        var needed = keepsWhole ? whole : min(whole, before + line * 2)
+        if properties.keepNext == true, NSMaxRange(range) < string.length {
+            let following = storage.attribute(.font, at: NSMaxRange(range), effectiveRange: nil) as? UIFont ?? font
+            needed += following.lineHeight
+        }
+        return needed
+    }
+
+    // MARK: - Borders and shading
+
+    private struct Decoration {
+        var properties: ParagraphProperties
+        var paragraph: NSRange
+        var page: Int
+        var rect: CGRect
+    }
+
+    /// Paragraph shading, and borders, a box per page; paragraphs alike
+    /// share a box, with the line between them if they have one.
+    private func drawParagraphDecorations(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
+        guard let storage = textStorage, let container = textContainers.first else { return }
+        let string = storage.string as NSString
+        let shown = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+        var decorations: [Decoration] = []
+        var location = string.paragraphRange(for: NSRange(location: min(shown.location, max(0, string.length - 1)), length: 0)).location
+        // One paragraph beyond what is shown, so the last one shown knows whether its box carries on.
+        var end = NSMaxRange(shown)
+        if end < string.length { end = NSMaxRange(string.paragraphRange(for: NSRange(location: end, length: 0))) }
+        while location < end, location < string.length {
+            let range = string.paragraphRange(for: NSRange(location: location, length: 0))
+            location = NSMaxRange(range)
+            guard storage.attribute(.librettoBlock, at: NSMaxRange(range) - 1, effectiveRange: nil) == nil,
+                  let box = DocumentRenderer.paragraphBox(in: storage, paragraphRange: range) else { continue }
+            let properties = styles.resolvedParagraphProperties(box.paragraph.properties)
+            guard properties.shadingHex != nil || properties.borders.map({ !$0.isEmpty }) == true else { continue }
+            let style = storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle
+            var boxes: [Int: CGRect] = [:]
+            enumerateLineFragments(forGlyphRange: glyphRange(forCharacterRange: range, actualCharacterRange: nil)) {
+                rect, _, _, _, _ in
+                let page = self.geometry.page(containing: rect.midY)
+                boxes[page] = boxes[page].map { $0.union(rect) } ?? rect
+            }
+            let first = boxes.keys.min()
+            let last = boxes.keys.max()
+            for (page, var rect) in boxes {
+                // The box holds the text, not the paragraph's spacing.
+                if page == first { rect.origin.y += style?.paragraphSpacingBefore ?? 0; rect.size.height -= style?.paragraphSpacingBefore ?? 0 }
+                if page == last { rect.size.height -= style?.paragraphSpacing ?? 0 }
+                let left = min(style?.headIndent ?? 0, style?.firstLineHeadIndent ?? 0)
+                rect.origin.x = left
+                rect.size.width = container.size.width - left + (style?.tailIndent ?? 0)
+                decorations.append(Decoration(properties: properties, paragraph: range, page: page, rect: rect))
+            }
+        }
+        decorations.sort { ($0.paragraph.location, $0.page) < ($1.paragraph.location, $1.page) }
+
+        let ink = scheme == .dark ? UIColor.white : UIColor.black
+        for (index, decoration) in decorations.enumerated() {
+            func joins(_ other: Decoration?) -> Bool {
+                guard let other else { return false }
+                return other.page == decoration.page && other.properties.borders == decoration.properties.borders
+                    && other.properties.shadingHex == decoration.properties.shadingHex
+                    && other.paragraph.location != decoration.paragraph.location
+                    && (NSMaxRange(other.paragraph) == decoration.paragraph.location
+                        || NSMaxRange(decoration.paragraph) == other.paragraph.location)
+            }
+            let joinsAbove = joins(index > 0 ? decorations[index - 1] : nil)
+            let joinsBelow = joins(index + 1 < decorations.count ? decorations[index + 1] : nil)
+            let borders = decoration.properties.borders ?? ParagraphBorders()
+            var rect = decoration.rect
+            // The border's own space around the text.
+            let pad = { (line: BorderLine?) in CGFloat(line?.space ?? 0) }
+            rect.origin.x -= pad(borders.left)
+            rect.size.width += pad(borders.left) + pad(borders.right)
+            if !joinsAbove { rect.origin.y -= pad(borders.top); rect.size.height += pad(borders.top) }
+            if !joinsBelow { rect.size.height += pad(borders.bottom) }
+            if joinsBelow, index + 1 < decorations.count {
+                // Shading runs on into the next paragraph's box, with no gap.
+                rect.size.height = max(rect.height, decorations[index + 1].rect.minY - rect.minY)
+            }
+            let frame = rect.offsetBy(dx: origin.x, dy: origin.y)
+            if let fill = decoration.properties.shadingHex.flatMap({ AdaptiveColor.uiColor(hex: $0, for: scheme, isText: false) }) {
+                fill.setFill()
+                UIRectFillUsingBlendMode(frame, .normal)
+            }
+            func stroke(_ line: BorderLine?, from start: CGPoint, to end: CGPoint) {
+                guard let line else { return }
+                let color = line.colorHex.flatMap { AdaptiveColor.uiColor(hex: $0, for: scheme, isText: true) } ?? ink
+                Self.strokeBorder(line, from: start, to: end, color: color)
+            }
+            if !joinsAbove {
+                stroke(borders.top, from: CGPoint(x: frame.minX, y: frame.minY), to: CGPoint(x: frame.maxX, y: frame.minY))
+            } else {
+                stroke(borders.between, from: CGPoint(x: frame.minX, y: frame.minY), to: CGPoint(x: frame.maxX, y: frame.minY))
+            }
+            if !joinsBelow {
+                stroke(borders.bottom, from: CGPoint(x: frame.minX, y: frame.maxY), to: CGPoint(x: frame.maxX, y: frame.maxY))
+            }
+            stroke(borders.left, from: CGPoint(x: frame.minX, y: frame.minY), to: CGPoint(x: frame.minX, y: frame.maxY))
+            stroke(borders.right, from: CGPoint(x: frame.maxX, y: frame.minY), to: CGPoint(x: frame.maxX, y: frame.maxY))
+        }
+    }
+
+    /// One border line, in its style: single, double, dotted, dashed or thick.
+    static func strokeBorder(_ line: BorderLine, from start: CGPoint, to end: CGPoint, color: UIColor) {
+        let width = max(0.5, CGFloat(line.size) / 8)
+        let path = UIBezierPath()
+        path.lineWidth = width
+        color.setStroke()
+        switch line.style {
+        case "dotted": path.setLineDash([width, width * 2], count: 2, phase: 0)
+        case "dashed", "dashSmallGap", "dotDash", "dotDotDash": path.setLineDash([width * 4, width * 2], count: 2, phase: 0)
+        default: break
+        }
+        if line.style == "double" || line.style.hasPrefix("thinThick") || line.style.hasPrefix("thickThin") {
+            // Two lines, the gap between them as wide as each.
+            let isHorizontal = abs(end.y - start.y) < abs(end.x - start.x)
+            let shift = width
+            for offset in [-shift, shift] {
+                let delta = isHorizontal ? CGPoint(x: 0, y: offset) : CGPoint(x: offset, y: 0)
+                path.move(to: CGPoint(x: start.x + delta.x, y: start.y + delta.y))
+                path.addLine(to: CGPoint(x: end.x + delta.x, y: end.y + delta.y))
+            }
+        } else {
+            path.move(to: start)
+            path.addLine(to: end)
+        }
+        path.stroke()
+    }
+
     // MARK: - Comments
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
+        drawParagraphDecorations(forGlyphRange: glyphsToShow, at: origin)
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
         guard !commentRanges.isEmpty, let container = textContainers.first else { return }
         let shown = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
@@ -321,6 +494,7 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard let storage = textStorage else { return }
         let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
         let string = storage.string as NSString
+        drawTabLeaders(in: characters, at: origin)
         storage.enumerateAttribute(.librettoListLabel, in: characters) { value, range, _ in
             guard let label = value as? ListLabelBox, !label.text.isEmpty else { return }
             // Only where a paragraph starts within what is being drawn.
@@ -332,6 +506,50 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                 }
                 location = NSMaxRange(paragraph)
             }
+        }
+    }
+
+    /// Dots, dashes or a rule across the space a tab with a leader takes.
+    private func drawTabLeaders(in characters: NSRange, at origin: CGPoint) {
+        guard let storage = textStorage, let container = textContainers.first else { return }
+        let string = storage.string as NSString
+        var index = characters.location
+        while index < NSMaxRange(characters) {
+            let found = string.range(
+                of: "\t", options: .literal, range: NSRange(location: index, length: NSMaxRange(characters) - index)
+            )
+            guard found.location != NSNotFound else { break }
+            index = found.location + 1
+            guard let box = storage.attribute(.librettoParagraph, at: found.location, effectiveRange: nil) as? ParagraphBox,
+                  let stops = styles.resolvedParagraphProperties(box.paragraph.properties).tabStops,
+                  stops.contains(where: { $0.leader != nil }) else { continue }
+            let glyph = glyphIndexForCharacter(at: found.location)
+            let rect = boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+            guard rect.width > 6,
+                  let leader = stops.first(where: { CGFloat($0.position) / 20 >= rect.maxX - 1 })?.leader else { continue }
+            let mark: String
+            switch leader {
+            case "hyphen": mark = "-"
+            case "underscore", "heavy": mark = "_"
+            case "middleDot": mark = "·"
+            default: mark = "."
+            }
+            let attributes = storage.attributes(at: found.location, effectiveRange: nil)
+            let font = attributes[.font] as? UIFont ?? .systemFont(ofSize: 11)
+            let drawn: [NSAttributedString.Key: Any] = [
+                .font: font, .foregroundColor: attributes[.foregroundColor] ?? UIColor.label,
+            ]
+            let markWidth = (mark as NSString).size(withAttributes: drawn).width * 1.6
+            let count = Int((rect.width - 4) / max(markWidth, 1))
+            guard count > 0 else { continue }
+            let leaderText = Array(repeating: mark, count: count).joined(separator: " ")
+            let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let baseline = location(forGlyphAt: glyph).y
+            let width = (leaderText as NSString).size(withAttributes: drawn).width
+            (leaderText as NSString).draw(
+                at: CGPoint(x: origin.x + rect.maxX - width - 2, y: origin.y + line.minY + baseline - font.ascender),
+                withAttributes: drawn
+            )
         }
     }
 

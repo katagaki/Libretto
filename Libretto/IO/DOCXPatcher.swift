@@ -85,6 +85,49 @@ enum DOCXPatcher {
                 set("pageBreakBefore", new.pageBreakBefore.map { $0 ? [:] : ["val": "0"] })
             }
             if new.outlineLevel != old.outlineLevel { set("outlineLvl", new.outlineLevel.map { ["val": String($0)] }) }
+            func flag(_ value: Bool?) -> [String: String]? { value.map { $0 ? [:] : ["val": "0"] } }
+            if new.keepNext != old.keepNext { set("keepNext", flag(new.keepNext)) }
+            if new.keepLines != old.keepLines { set("keepLines", flag(new.keepLines)) }
+            if new.widowControl != old.widowControl { set("widowControl", flag(new.widowControl)) }
+            if new.shadingHex != old.shadingHex {
+                set("shd", new.shadingHex.map { ["val": "clear", "color": "auto", "fill": $0] })
+            }
+            if new.borders != old.borders {
+                pPr.children(named: "pBdr").forEach(pPr.removeChild)
+                if let borders = new.borders, !borders.isEmpty {
+                    let pBdr = XMLElement.word("pBdr")
+                    pPr.insertChild(pBdr, at: pPr.children.count)
+                    for (name, line) in [("top", borders.top), ("left", borders.left), ("bottom", borders.bottom),
+                                         ("right", borders.right), ("between", borders.between)] {
+                        guard let line else { continue }
+                        pBdr.insertChild(.word(name, [
+                            "val": line.style, "sz": String(line.size), "space": String(line.space),
+                            "color": line.colorHex ?? "auto",
+                        ]), at: pBdr.children.count)
+                    }
+                }
+            }
+            if new.tabStops != old.tabStops {
+                pPr.children(named: "tabs").forEach(pPr.removeChild)
+                if let stops = new.tabStops, !stops.isEmpty {
+                    let tabs = XMLElement.word("tabs")
+                    pPr.insertChild(tabs, at: pPr.children.count)
+                    for stop in stops {
+                        var attributes = ["val": stop.alignment.rawValue, "pos": String(stop.position)]
+                        if let leader = stop.leader { attributes["leader"] = leader }
+                        tabs.insertChild(.word("tab", attributes), at: tabs.children.count)
+                    }
+                }
+            }
+            if new.dropCap != old.dropCap {
+                pPr.children(named: "framePr").forEach(pPr.removeChild)
+                if let dropCap = new.dropCap {
+                    set("framePr", [
+                        "dropCap": dropCap.inMargin ? "margin" : "drop", "lines": String(dropCap.lines),
+                        "wrap": "around", "vAnchor": "text", "hAnchor": dropCap.inMargin ? "page" : "text",
+                    ])
+                }
+            }
             if new.list != old.list {
                 pPr.children(named: "numPr").forEach(pPr.removeChild)
                 if let list = new.list {

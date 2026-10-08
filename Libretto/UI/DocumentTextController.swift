@@ -73,6 +73,7 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         context.contentHeight = geometry.contentHeight
         layoutManager.geometry = geometry
         layoutManager.styles = document.styles
+        layoutManager.scheme = scheme
     }
 
     /// Renders the whole document into the text, keeping the selection
@@ -450,6 +451,14 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         result.spacingBefore = resolvedParagraph.spacingBefore ?? 0
         result.spacingAfter = resolvedParagraph.spacingAfter ?? 0
         result.lineSpacing = resolvedParagraph.lineSpacing?.multiple ?? 1
+        result.keepNext = resolvedParagraph.keepNext ?? false
+        result.keepLines = resolvedParagraph.keepLines ?? false
+        result.widowControl = resolvedParagraph.widowControl ?? false
+        result.pageBreakBefore = resolvedParagraph.pageBreakBefore ?? false
+        result.shadingHex = resolvedParagraph.shadingHex
+        result.borders = resolvedParagraph.borders.flatMap { $0.isEmpty ? nil : $0 }
+        result.tabStops = resolvedParagraph.tabStops ?? []
+        result.dropCap = resolvedParagraph.dropCap
         if state.selectionFormat != result { state.selectionFormat = result }
 
         var table: Table.ID?
@@ -620,6 +629,42 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
             if let before { properties.spacingBefore = before }
             if let after { properties.spacingAfter = after }
             if let lineMultiple { properties.lineSpacing = LineSpacing(line: Int(lineMultiple * 240), rule: .auto) }
+        }
+    }
+
+    /// Turns an on/off paragraph setting, such as keeping with the next, on
+    /// or off, leaving it to the style where the style already says the same.
+    func setParagraphFlag(_ key: WritableKeyPath<ParagraphProperties, Bool?>, _ isOn: Bool) {
+        let styles = document.styles
+        editParagraphs { properties in
+            var probe = properties
+            probe[keyPath: key] = nil
+            let inherited = styles.resolvedParagraphProperties(probe)[keyPath: key] ?? false
+            properties[keyPath: key] = inherited == isOn ? nil : isOn
+        }
+    }
+
+    func setShading(_ hex: String?) {
+        editParagraphs { $0.shadingHex = hex.map { String($0.suffix(6)).uppercased() } }
+    }
+
+    /// Borders around the paragraphs; none at all takes away any the style gives.
+    func setBorders(_ borders: ParagraphBorders) {
+        editParagraphs { $0.borders = borders }
+    }
+
+    /// Sets the tab stops the paragraphs end up with: their own, and clearing
+    /// any of their style's that are not among them.
+    func setTabStops(_ stops: [TabStop]) {
+        let styles = document.styles
+        editParagraphs { properties in
+            var probe = properties
+            probe.tabStops = nil
+            let inherited = styles.resolvedParagraphProperties(probe).tabStops ?? []
+            let cleared = inherited.filter { !stops.contains($0) }.map { TabStop(position: $0.position, alignment: .clear) }
+            let own = stops.filter { !inherited.contains($0) }
+            let result = (own + cleared).sorted { $0.position < $1.position }
+            properties.tabStops = result.isEmpty ? nil : result
         }
     }
 

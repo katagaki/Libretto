@@ -269,7 +269,19 @@ enum Typography {
             }
         }
         style.defaultTabInterval = 36
-        style.tabStops = []
+        style.tabStops = (resolved.tabStops ?? []).compactMap { stop in
+            let location = CGFloat(stop.position) / 20
+            switch stop.alignment {
+            case .left: return NSTextTab(textAlignment: .natural, location: location)
+            case .center: return NSTextTab(textAlignment: .center, location: location)
+            case .right: return NSTextTab(textAlignment: .right, location: location)
+            case .decimal:
+                return NSTextTab(textAlignment: .right, location: location, options: [
+                    .columnTerminators: NSTextTab.columnTerminators(for: Locale.current),
+                ])
+            case .bar, .clear: return nil
+            }
+        }
         style.lineBreakMode = .byWordWrapping
         return style
     }
