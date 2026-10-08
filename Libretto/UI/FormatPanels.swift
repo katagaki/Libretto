@@ -243,6 +243,7 @@ private struct HighlightSwatches: View {
 
 /// Paragraph style, alignment, lists, spacing and indentation.
 struct ParagraphPanel: View {
+    @Binding var document: WordDocument
     @Bindable var state: EditorState
 
     private var format: SelectionFormat { state.selectionFormat }
@@ -271,6 +272,12 @@ struct ParagraphPanel: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("style.\(choice.rawValue)")
                 }
+                NavigationLink {
+                    StylesList(document: $document, state: state)
+                } label: {
+                    Text("Styles.All")
+                }
+                .accessibilityIdentifier("allStyles")
             }
 
             Section("Paragraph.Section.Alignment") {

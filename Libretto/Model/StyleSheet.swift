@@ -30,6 +30,23 @@ struct StyleSheet: Equatable, Sendable {
         /// A table style's formatting for parts of the table, by `w:tblStylePr`
         /// type, with what the style says of the whole table as `wholeTable`.
         var tableConditions: [TableCondition.Kind: TableCondition] = [:]
+        /// `w:qFormat`: offered among the quick styles. `w:semiHidden`: not offered at all.
+        var isQuick = false
+        var isHidden = false
+        /// The style's properties as read, and their elements, so a changed
+        /// style has only what changed patched. `nil` for a style made in Libretto.
+        var originalParagraphProperties: ParagraphProperties?
+        var originalRunStyle: RunStyle?
+        var paragraphPropertiesXML: String?
+        var runPropertiesXML: String?
+        /// Made in Libretto, to be added to the styles part on save.
+        var isCreated = false
+
+        /// Whether it differs from the definition it was read with.
+        var isModified: Bool {
+            !isCreated && (paragraphProperties != (originalParagraphProperties ?? ParagraphProperties())
+                || runStyle != (originalRunStyle ?? RunStyle()))
+        }
 
         enum Kind: String, Sendable {
             case paragraph, character, table, numbering
@@ -133,6 +150,39 @@ struct StyleSheet: Equatable, Sendable {
         }
         styles[id] = style
         added.append(choice)
+        return id
+    }
+
+    /// Paragraph styles to offer: the quick styles, those the document uses,
+    /// and those made in Libretto, by name.
+    func offeredParagraphStyles(using used: Set<String>) -> [Style] {
+        styles.values.filter { style in
+            style.kind == .paragraph && !style.isHidden && (style.isQuick || used.contains(style.id) || style.isCreated)
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// A new paragraph style, returning its ID: one made from its name, unlike any other.
+    mutating func createParagraphStyle(
+        name: String, basedOn: String?, paragraph: ParagraphProperties, run: RunStyle
+    ) -> String {
+        let stem = name.filter { $0.isLetter || $0.isNumber }
+        var id = stem.isEmpty ? "Style" : stem
+        var number = 1
+        while styles[id] != nil {
+            number += 1
+            id = (stem.isEmpty ? "Style" : stem) + String(number)
+        }
+        var properties = paragraph
+        properties.styleID = nil
+        var runStyle = run
+        runStyle.characterStyleID = nil
+        var style = Style(id: id, name: name, kind: .paragraph, basedOn: basedOn, next: nil)
+        style.paragraphProperties = properties
+        style.runStyle = runStyle
+        style.isQuick = true
+        style.isCreated = true
+        styles[id] = style
         return id
     }
 

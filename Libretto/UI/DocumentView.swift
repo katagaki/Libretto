@@ -181,7 +181,7 @@ struct DocumentView: View {
     private func panelContent(_ panel: EditorPanel) -> some View {
         switch panel {
         case .format: FormatPanel(state: state)
-        case .paragraph: ParagraphPanel(state: state)
+        case .paragraph: ParagraphPanel(document: wordDocument, state: state)
         case .pageSetup: PageSetupPanel(document: wordDocument, state: state)
         case .table: TablePanel(state: state)
         case .insertTable: InsertTablePanel(state: state)

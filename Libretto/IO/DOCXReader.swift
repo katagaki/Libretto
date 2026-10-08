@@ -597,8 +597,15 @@ enum StyleReader {
                 sheet.defaultParagraphProperties = PropertyReader.paragraphProperties(from: pPr)
             }
         }
+        let namespaces = root.namespaceDeclarations
         for element in root.children(named: "style") {
-            guard let style = style(from: element) else { continue }
+            guard var style = style(from: element) else { continue }
+            style.isQuick = element.firstChild(named: "qFormat") != nil
+            style.isHidden = PropertyReader.isOn(element.firstChild(named: "semiHidden")) ?? false
+            style.paragraphPropertiesXML = element.firstChild(named: "pPr")
+                .flatMap { XMLLite.serialize($0, inheritedNamespaces: namespaces) }
+            style.runPropertiesXML = element.firstChild(named: "rPr")
+                .flatMap { XMLLite.serialize($0, inheritedNamespaces: namespaces) }
             sheet.styles[style.id] = style
             if element.attribute("default") == "1" || element.attribute("default") == "true" {
                 switch style.kind {
@@ -627,6 +634,8 @@ enum StyleReader {
             style.runStyle = PropertyReader.runStyle(from: rPr)
             style.runStyle.characterStyleID = nil
         }
+        style.originalParagraphProperties = style.paragraphProperties
+        style.originalRunStyle = style.runStyle
         if let borders = element.firstDescendant(atPath: "tblPr/tblBorders") {
             style.hasTableBorders = PropertyReader.hasVisibleBorders(borders)
             style.tableBorderColorHex = PropertyReader.borderColor(borders)

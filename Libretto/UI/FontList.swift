@@ -5,12 +5,15 @@ import UIKit
 /// the fonts the document already uses, then every font on the device.
 struct FontList: View {
     @Bindable var state: EditorState
+    /// The font shown as chosen, and what choosing one does: by default, the selection's.
+    var current: String??
+    var onPick: ((String) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
 
     private var controller: DocumentTextController? { state.controller }
     private var document: WordDocument? { controller?.document }
-    private var selected: String? { state.selectionFormat.fontName }
+    private var selected: String? { current ?? state.selectionFormat.fontName }
 
     private static let installed = UIFont.familyNames.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
 
@@ -50,7 +53,7 @@ struct FontList: View {
 
     private func row(_ name: String, title: String, previewFamily: String) -> some View {
         Button {
-            controller?.setFont(name)
+            if let onPick { onPick(name) } else { controller?.setFont(name) }
             dismiss()
         } label: {
             HStack {

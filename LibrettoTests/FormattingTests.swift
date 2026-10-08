@@ -187,6 +187,47 @@ struct FormattingTests {
         #expect(ListPreset.legal.sample == "1.  1.1.  1.1.1.")
     }
 
+    @Test("A changed style has only what changed patched into its definition")
+    func modifiesStyle() throws {
+        let document = try Fixtures.document()
+        let controller = DocumentTextController(document: document, scheme: .light)
+        var latest: WordDocument?
+        controller.onChange = { latest = $0 }
+        controller.modifyStyle("Heading1") { style in
+            style.runStyle.colorHex = "C00000"
+            style.runStyle.fontSize = 40
+        }
+        let changed = try #require(latest)
+        let styles = String(decoding: try #require(try Fixtures.written(changed)["word/styles.xml"]), as: UTF8.self)
+        #expect(styles.contains("<w:pPr><w:keepNext/><w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:b/><w:color w:val=\"C00000\"/><w:sz w:val=\"40\"/><w:szCs w:val=\"40\"/></w:rPr>"))
+        let reread = try DOCXReader.document(fromParts: try Fixtures.written(changed))
+        #expect(reread.styles.resolvedRunStyle(RunStyle(), paragraphStyleID: "Heading1").colorHex == "C00000")
+    }
+
+    @Test("A style made from the selection takes on its formatting, and its paragraph goes in it")
+    func createsStyle() throws {
+        let (controller, _, latest) = makeController(text: "Pull quote")
+        controller.setAlignment(.center)
+        controller.textView.selectedRange = NSRange(location: 0, length: 10)
+        controller.toggleItalic()
+        controller.textView.selectedRange = NSRange(location: 3, length: 0)
+        let id = controller.createStyleFromSelection(name: "Pull Quote")
+        #expect(id == "PullQuote")
+
+        let document = try #require(latest())
+        let paragraph = try #require(firstParagraph(document))
+        #expect(paragraph.properties.styleID == "PullQuote")
+        #expect(paragraph.properties.alignment == nil)
+        #expect(document.styles.resolvedParagraphProperties(paragraph.properties).alignment == .center)
+        #expect(document.styles.styles["PullQuote"]?.runStyle.isItalic == true)
+
+        let parts = try Fixtures.written(document)
+        let styles = String(decoding: try #require(parts["word/styles.xml"]), as: UTF8.self)
+        #expect(styles.contains("w:customStyle=\"1\" w:styleId=\"PullQuote\" w:type=\"paragraph\"><w:name w:val=\"Pull Quote\"/><w:basedOn w:val=\"Normal\"/><w:qFormat/><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:rPr><w:i/><w:iCs/></w:rPr>"))
+        let reread = try DOCXReader.document(fromParts: parts)
+        #expect(reread.styles.offeredParagraphStyles(using: []).contains { $0.id == "PullQuote" })
+    }
+
     @Test("Text in capitals is drawn with capital glyphs, and keeps its letters")
     func allCaps() throws {
         let (controller, _, latest) = makeController(text: "abc")

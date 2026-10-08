@@ -278,6 +278,16 @@ S = {
  "List.StartAt": ["Start At: %d", "開始番号：%d", "시작 번호: %d", "起始编号：%d", "起始值：%d"],
  "List.Restart": ["Restart Numbering", "番号を振り直す", "번호 다시 매기기", "重新开始编号", "重新編號"],
  "List.Continue": ["Continue Numbering", "番号を継続する", "번호 계속 매기기", "继续编号", "繼續編號"],
+ "Styles.All": ["All Styles", "すべてのスタイル", "모든 스타일", "所有样式", "所有樣式"],
+ "Styles.Title": ["Styles", "スタイル", "스타일", "样式", "樣式"],
+ "Styles.Section.All": ["Paragraph Styles", "段落スタイル", "단락 스타일", "段落样式", "段落樣式"],
+ "Styles.New": ["New Style from Selection", "選択箇所から新しいスタイル", "선택 영역에서 새 스타일", "从所选内容新建样式", "從所選內容新增樣式"],
+ "Styles.New.Placeholder": ["Style name", "スタイル名", "스타일 이름", "样式名称", "樣式名稱"],
+ "Styles.New.Footer": ["Takes on the selected paragraph’s formatting.", "選択した段落の書式が使われます。", "선택한 단락의 서식을 사용합니다.", "采用所选段落的格式。", "採用所選段落的格式。"],
+ "Styles.Modify": ["Modify Style", "スタイルを変更", "스타일 수정", "修改样式", "修改樣式"],
+ "Styles.Size": ["Size: %@ pt", "サイズ：%@ pt", "크기: %@pt", "字号：%@ 磅", "大小：%@ 點"],
+ "Styles.UpdateToMatch": ["Update to Match Selection", "選択箇所と一致するように更新", "선택 영역에 맞게 업데이트", "更新以匹配所选内容", "更新以符合所選內容"],
+ "Styles.Modify.Footer": ["Changes every paragraph in this style.", "このスタイルのすべての段落が変わります。", "이 스타일의 모든 단락이 변경됩니다.", "会更改使用此样式的所有段落。", "會變更使用此樣式的所有段落。"],
 }
 
 reuse = ["Alert.Error.Title", "Common.OK", "Format.ClearAll", "Format.Section.Text", "Format.Text.Size",

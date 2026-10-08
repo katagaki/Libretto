@@ -614,6 +614,65 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         editParagraphs(scope: .paragraphStyle) { $0.styleID = isDefault ? nil : id }
     }
 
+    /// The style of the paragraph at `location`, if it names one.
+    func paragraphStyleID(at location: Int) -> String? {
+        paragraphModel(for: paragraphRange(at: location)).properties.styleID
+    }
+
+    /// Puts the selected paragraphs in a style of the document's, by ID.
+    func applyParagraphStyle(id: String) {
+        let isDefault = id == document.styles.defaultParagraphStyleID
+        editParagraphs(scope: .paragraphStyle) { $0.styleID = isDefault ? nil : id }
+    }
+
+    /// Changes a style's definition, and so every paragraph in it.
+    func modifyStyle(_ id: String, _ change: (inout StyleSheet.Style) -> Void) {
+        flush()
+        guard var style = document.styles.styles[id] else { return }
+        change(&style)
+        document.styles.styles[id] = style
+        state?.pendingScope = .paragraphStyle
+        render()
+        onChange?(document)
+    }
+
+    /// The paragraph at the selection's own formatting, and its first run's, for a style to take on.
+    private var selectionFormatting: (paragraph: ParagraphProperties, run: RunStyle, styleID: String?) {
+        let location = textView.selectedRange.location
+        let paragraph = paragraphModel(for: paragraphRange(at: location))
+        var properties = paragraph.properties
+        let styleID = properties.styleID ?? document.styles.defaultParagraphStyleID
+        properties.styleID = nil
+        properties.list = nil
+        var run = runBox(forTypingAt: textView.selectedRange.length > 0 ? location + 1 : location).format.style
+        run.characterStyleID = nil
+        return (properties, run, styleID)
+    }
+
+    /// Makes a style of the selection's formatting, and puts its paragraphs in it.
+    @discardableResult
+    func createStyleFromSelection(name: String) -> String {
+        let formatting = selectionFormatting
+        let id = document.styles.createParagraphStyle(
+            name: name, basedOn: formatting.styleID, paragraph: formatting.paragraph, run: formatting.run
+        )
+        refreshContext()
+        // The style now says what the paragraph's own formatting did.
+        editParagraphs(scope: .paragraphStyle) { properties in
+            properties = ParagraphProperties(styleID: id, list: properties.list)
+        }
+        return id
+    }
+
+    /// Redefines a style as the selection is formatted.
+    func updateStyleToMatchSelection(_ id: String) {
+        let formatting = selectionFormatting
+        modifyStyle(id) { style in
+            style.paragraphProperties = style.paragraphProperties.merged(with: formatting.paragraph)
+            style.runStyle = style.runStyle.merged(with: formatting.run)
+        }
+    }
+
     func setAlignment(_ alignment: ParagraphAlignment) {
         editParagraphs { $0.alignment = alignment }
     }

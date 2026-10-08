@@ -302,6 +302,13 @@ enum DOCXPatcher {
         } ?? base
     }
 
+    /// `w:style`'s children, in schema order.
+    static let styleOrder = [
+        "name", "aliases", "basedOn", "next", "link", "autoRedefine", "hidden", "uiPriority", "semiHidden",
+        "unhideWhenUsed", "qFormat", "locked", "personal", "personalCompose", "personalReply", "rsid", "pPr", "rPr",
+        "tblPr", "trPr", "tcPr", "tblStylePr",
+    ]
+
     // MARK: - Settings
 
     /// `w:settings`'s children, in schema order.

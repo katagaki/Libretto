@@ -15,7 +15,9 @@ enum DOCXWriter {
         package.parts = parts
 
         if !document.numbering.added.isEmpty { package.addLists(document.numbering) }
-        if !document.styles.added.isEmpty { package.addStyles(document.styles) }
+        if !document.styles.added.isEmpty || document.styles.styles.values.contains(where: { $0.isCreated || $0.isModified }) {
+            package.addStyles(document.styles)
+        }
         for (id, media) in document.package.addedMedia.sorted(by: { $0.key < $1.key }) {
             package.addMedia(media, relationshipID: id)
         }
@@ -548,6 +550,42 @@ private struct PackageEditor {
                 if let element = XMLLite.fragment(xml, namespaces: namespaces) {
                     root.insertChild(element, at: root.children.count)
                 }
+            }
+            // Styles made in Libretto, then styles whose definitions changed.
+            for style in styles.styles.values.filter(\.isCreated).sorted(by: { $0.id < $1.id }) {
+                var xml = "<w:style w:type=\"paragraph\" w:customStyle=\"1\" w:styleId=\"\(XMLLite.escape(style.id))\">"
+                xml += "<w:name w:val=\"\(XMLLite.escape(style.name))\"/>"
+                if let basedOn = style.basedOn { xml += "<w:basedOn w:val=\"\(XMLLite.escape(basedOn))\"/>" }
+                if let next = style.next { xml += "<w:next w:val=\"\(XMLLite.escape(next))\"/>" }
+                xml += "<w:qFormat/>"
+                xml += DOCXPatcher.paragraphPropertiesXML(for: Paragraph(properties: style.paragraphProperties)) ?? ""
+                xml += DOCXPatcher.runPropertiesXML(for: RunFormat(style: style.runStyle)) ?? ""
+                xml += "</w:style>"
+                if let element = XMLLite.fragment(xml, namespaces: namespaces) {
+                    root.insertChild(element, at: root.children.count)
+                }
+            }
+            let modified = Dictionary(
+                styles.styles.values.filter(\.isModified).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
+            )
+            guard !modified.isEmpty else { return }
+            for element in root.children(named: "style") {
+                guard let id = element.attribute("styleId"), let style = modified[id] else { continue }
+                let pPr = DOCXPatcher.paragraphPropertiesXML(for: Paragraph(
+                    properties: style.paragraphProperties, originalProperties: style.originalParagraphProperties,
+                    preservedPropertiesXML: style.paragraphPropertiesXML
+                ))
+                var format = RunFormat(style: style.runStyle, original: style.originalRunStyle)
+                format.preservedPropertiesXML = style.runPropertiesXML
+                let rPr = DOCXPatcher.runPropertiesXML(for: format)
+                element.children.filter { $0.name == "pPr" || $0.name == "rPr" }.forEach(element.removeChild)
+                let scope = root.namespaceDeclarations.merging(namespaces) { own, _ in own }
+                for xml in [pPr, rPr].compactMap({ $0 }) {
+                    if let child = XMLLite.fragment(xml, namespaces: DOCXPatcher.usedBindings(for: xml, in: scope)) {
+                        element.insertChild(child, at: element.children.count)
+                    }
+                }
+                element.sortChildren(by: DOCXPatcher.styleOrder)
             }
         }
     }
