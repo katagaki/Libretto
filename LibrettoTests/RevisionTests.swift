@@ -32,7 +32,7 @@ struct RevisionTests {
         #expect(first.inlines.first { $0.plainText == "old" }?.revision?.kind == .deletion)
         #expect(first.inlines.first { $0.plainText == "new" }?.revision?.author == "Ada")
         #expect(paragraphs(document.body)[1].markRevision?.kind == .deletion)
-        #expect(!document.unsupportedFeatures.features.contains(.trackedChanges))
+        #expect(document.unsupportedFeatures.isEmpty)
 
         let xml = Fixtures.text(try Fixtures.written(document), "word/document.xml")
         #expect(xml.contains("<w:del w:author=\"Ada\" w:date=\"2026-01-01T00:00:00Z\" w:id=\"1\"><w:r><w:delText>old</w:delText></w:r></w:del>"))

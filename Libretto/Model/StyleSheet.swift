@@ -430,25 +430,15 @@ struct UnsupportedFeatureReport: Equatable, Sendable {
 
     enum Feature: String, CaseIterable, Sendable {
         case macros
-        case trackedChanges
-        case comments
-        case footnotes
         case shapes
-        case equations
         case contentControls
-        case sections
         case embeddedObjects
 
         var label: String {
             switch self {
             case .macros: return String(localized: "Unsupported.Macros")
-            case .trackedChanges: return String(localized: "Unsupported.TrackedChanges")
-            case .comments: return String(localized: "Unsupported.Comments")
-            case .footnotes: return String(localized: "Unsupported.Footnotes")
             case .shapes: return String(localized: "Unsupported.Shapes")
-            case .equations: return String(localized: "Unsupported.Equations")
             case .contentControls: return String(localized: "Unsupported.ContentControls")
-            case .sections: return String(localized: "Unsupported.Sections")
             case .embeddedObjects: return String(localized: "Unsupported.EmbeddedObjects")
             }
         }
