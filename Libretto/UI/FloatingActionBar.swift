@@ -51,6 +51,8 @@ struct FloatingActionBar: View {
 
                         if state.selectedTableID != nil {
                             tableGroup.id(Self.selectionActionsID)
+                        } else if state.isOnImage {
+                            pictureGroup.id(Self.selectionActionsID)
                         } else if state.isOnChange {
                             changeGroup.id(Self.selectionActionsID)
                         } else if state.isOnLink {
@@ -65,6 +67,7 @@ struct FloatingActionBar: View {
                 .animation(.snappy(duration: 0.2), value: state.isOnLink)
                 .animation(.snappy(duration: 0.2), value: state.selectedCommentIDs)
                 .animation(.snappy(duration: 0.2), value: state.isOnChange)
+                .animation(.snappy(duration: 0.2), value: state.isOnImage)
             }
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
@@ -159,6 +162,16 @@ struct FloatingActionBar: View {
             action("trash", isOn: false, label: "ActionBar.DeleteTable") {
                 controller?.deleteSelectedTable()
             }
+        }
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    /// What can be done to the picture the selection is on.
+    private var pictureGroup: some View {
+        group {
+            panelAction("photo", label: "ActionBar.EditPicture", panel: .picture)
+                .accessibilityIdentifier("editPicture")
+            action("trash", isOn: false, label: "Picture.Delete") { controller?.deleteSelectedImage() }
         }
         .transition(.scale.combined(with: .opacity))
     }

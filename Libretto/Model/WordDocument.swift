@@ -482,6 +482,40 @@ struct InlineImage: Equatable, Sendable {
     /// Floating pictures are shown in line, which is the nearest a reflowing
     /// view can come to where they sit on the page.
     var isFloating = false
+    /// How text goes around it, if it floats.
+    var wrap: ImageWrap = .inline
+    /// Where a floating picture sits: across, by alignment or an offset in points
+    /// from the margin or the page; down, an offset in points from its paragraph or the page.
+    var alignment: ParagraphAlignment?
+    var horizontalOffset: Double = 0
+    var isHorizontalFromPage = false
+    var verticalOffset: Double = 0
+    var verticalAnchor: VerticalAnchor = .paragraph
+
+    /// What a floating picture's place down the page is measured from.
+    enum VerticalAnchor: String, Sendable {
+        case paragraph, margin, page
+    }
+    /// What is cut off each edge, as a fraction of the picture: left, top, right, bottom.
+    var crop = ImageCrop()
+    /// Changed in Libretto, so its drawing is written afresh around the picture it holds.
+    var isEdited = false
+}
+
+enum ImageWrap: String, CaseIterable, Sendable {
+    case inline, square, tight, topAndBottom, behindText, inFrontOfText
+
+    /// Whether text keeps clear of it beside it, or above and below it.
+    var excludesText: Bool { self == .square || self == .tight || self == .topAndBottom }
+}
+
+struct ImageCrop: Equatable, Hashable, Sendable {
+    var left: Double = 0
+    var top: Double = 0
+    var right: Double = 0
+    var bottom: Double = 0
+
+    var isEmpty: Bool { left == 0 && top == 0 && right == 0 && bottom == 0 }
 }
 
 /// A tracked change: an insertion or deletion of text, or of a paragraph

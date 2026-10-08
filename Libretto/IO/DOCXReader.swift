@@ -364,10 +364,16 @@ private final class ReadContext {
         let width = Double(extent?.attribute("cx") ?? "") ?? 0
         let height = Double(extent?.attribute("cy") ?? "") ?? 0
         guard width > 0, height > 0 else { return nil }
-        return InlineImage(
+        var image = InlineImage(
             relationshipID: id, width: width / 12_700, height: height / 12_700,
             xml: serialize(drawing), isFloating: container.name == "anchor"
         )
+        if let source = firstDescendant(named: "srcRect", in: container) {
+            func fraction(_ name: String) -> Double { (Double(source.attribute(name) ?? "") ?? 0) / 100_000 }
+            image.crop = ImageCrop(left: fraction("l"), top: fraction("t"), right: fraction("r"), bottom: fraction("b"))
+        }
+        if container.name == "anchor" { DrawingReader.readPlacement(of: container, into: &image) }
+        return image
     }
 
     private func firstDescendant(named name: String, in element: XMLElement) -> XMLElement? {
@@ -704,6 +710,38 @@ enum StyleReader {
             }
         }
         return result
+    }
+}
+
+/// Where a floating drawing sits, and how text goes around it.
+enum DrawingReader {
+    static func readPlacement(of anchor: XMLElement, into image: inout InlineImage) {
+        let behind = ["1", "true", "on"].contains(anchor.attribute("behindDoc") ?? "")
+        if anchor.firstChild(named: "wrapSquare") != nil {
+            image.wrap = .square
+        } else if anchor.firstChild(named: "wrapTight") != nil || anchor.firstChild(named: "wrapThrough") != nil {
+            image.wrap = .tight
+        } else if anchor.firstChild(named: "wrapTopAndBottom") != nil {
+            image.wrap = .topAndBottom
+        } else {
+            image.wrap = behind ? .behindText : .inFrontOfText
+        }
+        if let horizontal = anchor.firstChild(named: "positionH") {
+            image.isHorizontalFromPage = horizontal.attribute("relativeFrom") == "page"
+            if let align = horizontal.firstChild(named: "align")?.text {
+                image.alignment = ["center": .center, "right": .trailing, "outside": .trailing][align] ?? .leading
+            } else {
+                image.horizontalOffset = (Double(horizontal.firstChild(named: "posOffset")?.text ?? "") ?? 0) / 12_700
+            }
+        }
+        if let vertical = anchor.firstChild(named: "positionV") {
+            switch vertical.attribute("relativeFrom") {
+            case "page", "topMargin": image.verticalAnchor = .page
+            case "margin": image.verticalAnchor = .margin
+            default: image.verticalAnchor = .paragraph
+            }
+            image.verticalOffset = (Double(vertical.firstChild(named: "posOffset")?.text ?? "") ?? 0) / 12_700
+        }
     }
 }
 

@@ -15,6 +15,7 @@ enum EditorPanel: String, Identifiable, Hashable {
     case navigator
     case crossReference
     case symbols
+    case picture
 
     var id: String { rawValue }
 
@@ -33,6 +34,7 @@ enum EditorPanel: String, Identifiable, Hashable {
         case .navigator: return String(localized: "Panel.Navigator.Title")
         case .crossReference: return String(localized: "Panel.CrossReference.Title")
         case .symbols: return String(localized: "Panel.Symbols.Title")
+        case .picture: return String(localized: "Panel.Picture.Title")
         }
     }
 }
@@ -156,6 +158,8 @@ final class EditorState {
     var selectedTableID: Table.ID?
     /// Whether the selection is in a link, which the link panel edits.
     var isOnLink = false
+    /// Whether the selection is on a picture, which the picture panel edits.
+    var isOnImage = false
     /// Whether the selection is on a tracked change, and whether changes are being tracked.
     var isOnChange = false
     var isTracking = false

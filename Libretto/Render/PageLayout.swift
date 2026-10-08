@@ -249,10 +249,12 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let placed = footnotes.isEmpty && noteHeights.isEmpty ? (byPage: [:], heights: [:]) : placeNotes()
             let caps = placeDropCaps()
             let paged = placeSections(pages: pages)
+            let floating = placeFloats()
             notesByPage = placed.byPage
             dropCaps = caps
             pageSections = paged.pageSections
-            let exclusions = caps.compactMap(\.exclusion)
+            placedFloats = floating.floats
+            let exclusions = caps.compactMap(\.exclusion) + floating.exclusions
             let shaped = PageGeometry(shapes: paged.shapes, gap: geometry.gap)
             guard placed.heights != noteHeights || exclusions != dropCapExclusions || shaped != geometry else { break }
             noteHeights = placed.heights
@@ -262,6 +264,78 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             pages = layOutText(in: container, startingWith: pages)
         }
         return pages
+    }
+
+    // MARK: - Floating pictures
+
+    /// A floating picture where the layout set it, in the container, and the page it is on.
+    struct PlacedFloat: Equatable {
+        var frame: CGRect
+        var page: Int
+        var image: UIImage
+        var behindText: Bool
+        /// The picture's character in the text, which takes no room of its own.
+        var location: Int
+    }
+
+    private(set) var placedFloats: [PlacedFloat] = []
+    private var floatExclusions: [CGRect] = []
+
+    /// Each floating picture beside its paragraph, or where on the page it says, and what text keeps clear of.
+    private func placeFloats() -> (floats: [PlacedFloat], exclusions: [CGRect]) {
+        guard let storage = textStorage else { return ([], []) }
+        let string = storage.string as NSString
+        var floats: [PlacedFloat] = []
+        var exclusions: [CGRect] = []
+        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            guard let attachment = value as? ImageAttachment, case .image(let picture) = attachment.inline.content,
+                  picture.wrap != .inline, let image = attachment.image else { return }
+            let paragraph = string.paragraphRange(for: NSRange(location: range.location, length: 0))
+            let glyph = glyphIndexForCharacter(at: paragraph.location)
+            guard glyph < numberOfGlyphs else { return }
+            let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let page = geometry.page(containing: line.midY)
+            let shape = geometry.shape(page)
+            let scale = min(1, shape.contentWidth / max(picture.width, 1), shape.contentHeight * 0.9 / max(picture.height, 1))
+            let size = CGSize(width: picture.width * scale, height: picture.height * scale)
+            // Across: from the margin, or the page's edge; the container starts at the text's leftmost edge.
+            let origin = picture.isHorizontalFromPage ? 0 : shape.margins.left
+            let span = picture.isHorizontalFromPage ? shape.size.width : shape.contentWidth
+            let pageX: CGFloat
+            switch picture.alignment {
+            case .center?: pageX = origin + (span - size.width) / 2
+            case .trailing?: pageX = origin + span - size.width
+            case .leading?, .justified?: pageX = origin
+            case nil: pageX = origin + picture.horizontalOffset
+            }
+            let y: CGFloat
+            switch picture.verticalAnchor {
+            case .paragraph: y = line.minY + picture.verticalOffset
+            case .margin: y = geometry.textTop(page) + picture.verticalOffset
+            case .page: y = geometry.textTop(page) - shape.margins.top + picture.verticalOffset
+            }
+            let frame = CGRect(x: pageX - geometry.textLeft, y: y, width: size.width, height: size.height)
+            floats.append(PlacedFloat(
+                frame: frame, page: page, image: image, behindText: picture.wrap == .behindText, location: range.location
+            ))
+            switch picture.wrap {
+            case .square, .tight: exclusions.append(frame.insetBy(dx: -9, dy: -2))
+            case .topAndBottom:
+                exclusions.append(CGRect(x: -1, y: frame.minY - 2, width: geometry.contentWidth + 2, height: frame.height + 4))
+            default: break
+            }
+        }
+        return (floats, exclusions)
+    }
+
+    /// Draws the floating pictures on the pages the glyphs being drawn are on, behind the text or in front of it.
+    private func drawFloats(behindText: Bool, forGlyphRange glyphs: NSRange, at origin: CGPoint) {
+        guard !placedFloats.isEmpty, glyphs.length > 0, NSMaxRange(glyphs) <= numberOfGlyphs else { return }
+        let first = geometry.page(containing: lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil).midY)
+        let last = geometry.page(containing: lineFragmentRect(forGlyphAt: NSMaxRange(glyphs) - 1, effectiveRange: nil).midY)
+        for placed in placedFloats where placed.behindText == behindText && (first...last).contains(placed.page) {
+            placed.image.draw(in: placed.frame.offsetBy(dx: origin.x, dy: origin.y))
+        }
     }
 
     // MARK: - Drop caps
@@ -684,6 +758,7 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
         drawParagraphDecorations(forGlyphRange: glyphsToShow, at: origin)
+        drawFloats(behindText: true, forGlyphRange: glyphsToShow, at: origin)
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
         guard !commentRanges.isEmpty, let container = textContainers.first else { return }
         let shown = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
@@ -731,6 +806,7 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
         let string = storage.string as NSString
         drawTabLeaders(in: characters, at: origin)
+        drawFloats(behindText: false, forGlyphRange: glyphsToShow, at: origin)
         storage.enumerateAttribute(.librettoListLabel, in: characters) { value, range, _ in
             guard let label = value as? ListLabelBox, !label.text.isEmpty else { return }
             // Only where a paragraph starts within what is being drawn.

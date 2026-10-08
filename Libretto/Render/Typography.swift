@@ -44,6 +44,32 @@ final class ImageStore: @unchecked Sendable {
         images[id] = image
         return image
     }
+
+    /// A picture with what its crop cuts off taken away.
+    func image(for picture: InlineImage, in package: DocumentPackage) -> UIImage? {
+        guard !picture.crop.isEmpty else { return image(forRelationship: picture.relationshipID, in: package) }
+        let crop = picture.crop
+        let key = "\(picture.relationshipID)#\(crop.left),\(crop.top),\(crop.right),\(crop.bottom)"
+        lock.lock()
+        if let cached = images[key] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+        guard let full = image(forRelationship: picture.relationshipID, in: package), let cgImage = full.cgImage else { return nil }
+        let width = CGFloat(cgImage.width)
+        let height = CGFloat(cgImage.height)
+        let rect = CGRect(
+            x: width * crop.left, y: height * crop.top,
+            width: max(1, width * (1 - crop.left - crop.right)), height: max(1, height * (1 - crop.top - crop.bottom))
+        ).integral
+        guard let cropped = cgImage.cropping(to: rect) else { return full }
+        let result = UIImage(cgImage: cropped, scale: full.scale, orientation: full.imageOrientation)
+        lock.lock()
+        images[key] = result
+        lock.unlock()
+        return result
+    }
 }
 
 enum Typography {

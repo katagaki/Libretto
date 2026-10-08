@@ -157,8 +157,12 @@ enum DocumentRenderer {
     ) -> ImageAttachment {
         let attachment = ImageAttachment()
         attachment.inline = inline
-        attachment.image = context.images.image(forRelationship: image.relationshipID, in: context.package)
-            ?? UIImage(systemName: "photo")
+        attachment.image = context.images.image(for: image, in: context.package) ?? UIImage(systemName: "photo")
+        // A floating picture takes no room in its line: the page layout sets it where it sits.
+        guard image.wrap == .inline else {
+            attachment.bounds = CGRect(x: 0, y: 0, width: 0.01, height: 0.01)
+            return attachment
+        }
         // Never wider than the text, nor taller than a page, or it could not be laid out at all.
         let tallest = maximumHeight ?? context.contentHeight * 0.75
         let scale = min(1, context.contentWidth / max(image.width, 1), tallest / max(image.height, 1))

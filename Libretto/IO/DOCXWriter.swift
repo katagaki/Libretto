@@ -222,30 +222,12 @@ struct BodyWriter {
         case .note(let reference):
             return reference.xml
         case .image(let image):
-            if let xml = image.xml { return xml }
+            if let xml = image.xml, !image.isEdited { return xml }
             pictureID += 1
-            return Self.drawingXML(for: image, id: pictureID)
+            return DrawingWriter.xml(for: image, id: pictureID)
         case .runChild(let xml, _), .paragraphChild(let xml, _):
             return xml
         }
-    }
-
-    /// A `w:drawing` for a picture inserted in Libretto.
-    static func drawingXML(for image: InlineImage, id: Int) -> String {
-        let cx = Int(image.width * 12_700)
-        let cy = Int(image.height * 12_700)
-        return """
-            <w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">\
-            <wp:extent cx="\(cx)" cy="\(cy)"/><wp:effectExtent l="0" t="0" r="0" b="0"/>\
-            <wp:docPr id="\(id)" name="Picture \(id)"/>\
-            <wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>\
-            <a:graphic><a:graphicData uri="\(OOXML.pictureNamespace)"><pic:pic>\
-            <pic:nvPicPr><pic:cNvPr id="\(id)" name="Picture \(id)"/><pic:cNvPicPr/></pic:nvPicPr>\
-            <pic:blipFill><a:blip r:embed="\(image.relationshipID)"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>\
-            <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="\(cx)" cy="\(cy)"/></a:xfrm>\
-            <a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>\
-            </pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>
-            """
     }
 
     // MARK: Tables
@@ -295,6 +277,93 @@ struct BodyWriter {
         </w:tblBorders><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" \
         w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr>
         """
+}
+
+// MARK: - Drawings
+
+/// A drawing written afresh: in line or anchored, at its size, cropped,
+/// wrapped and placed, around the graphic it held — the picture, or a shape.
+enum DrawingWriter {
+    nonisolated(unsafe) private static let graphicPattern = #/<(?<prefix>[\w.\-]+):graphic\b.*</\k<prefix>:graphic>/#.dotMatchesNewlines()
+    nonisolated(unsafe) private static let documentProperties = #/<(?:[\w.\-]+:)?docPr\b[^>]*?\sid="(\d+)"[^>]*?\sname="([^"]*)"/#
+
+    static func xml(for image: InlineImage, id fallbackID: Int) -> String {
+        let cx = Int(image.width * 12_700)
+        let cy = Int(image.height * 12_700)
+        var graphic = image.xml.flatMap { xml in xml.firstMatch(of: graphicPattern).map { String($0.output.0) } }
+            ?? pictureGraphic(relationshipID: image.relationshipID, id: fallbackID)
+        graphic = resized(graphic, cx: cx, cy: cy, crop: image.crop)
+        let properties = image.xml.flatMap { $0.firstMatch(of: documentProperties) }
+        let id = properties.map { String($0.output.1) } ?? String(fallbackID)
+        let name = properties.map { String($0.output.2) } ?? "Picture \(fallbackID)"
+        let common = """
+            <wp:extent cx="\(cx)" cy="\(cy)"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
+            """
+        let tail = """
+            <wp:docPr id="\(id)" name="\(XMLLite.escape(name))"/>\
+            <wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>\(graphic)
+            """
+        guard image.wrap != .inline else {
+            return "<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">\(common)\(tail)</wp:inline></w:drawing>"
+        }
+        let horizontal: String
+        let horizontalFrom = image.isHorizontalFromPage ? "page" : "margin"
+        if let alignment = image.alignment {
+            let value = alignment == .center ? "center" : alignment == .trailing ? "right" : "left"
+            horizontal = "<wp:positionH relativeFrom=\"\(horizontalFrom)\"><wp:align>\(value)</wp:align></wp:positionH>"
+        } else {
+            horizontal = "<wp:positionH relativeFrom=\"\(horizontalFrom)\"><wp:posOffset>\(Int(image.horizontalOffset * 12_700))</wp:posOffset></wp:positionH>"
+        }
+        let vertical = "<wp:positionV relativeFrom=\"\(image.verticalAnchor.rawValue)\"><wp:posOffset>\(Int(image.verticalOffset * 12_700))</wp:posOffset></wp:positionV>"
+        let wrap: String
+        switch image.wrap {
+        case .square: wrap = "<wp:wrapSquare wrapText=\"bothSides\"/>"
+        case .tight: wrap = "<wp:wrapTight wrapText=\"bothSides\"><wp:wrapPolygon edited=\"0\"><wp:start x=\"0\" y=\"0\"/><wp:lineTo x=\"0\" y=\"21600\"/><wp:lineTo x=\"21600\" y=\"21600\"/><wp:lineTo x=\"21600\" y=\"0\"/><wp:lineTo x=\"0\" y=\"0\"/></wp:wrapPolygon></wp:wrapTight>"
+        case .topAndBottom: wrap = "<wp:wrapTopAndBottom/>"
+        default: wrap = "<wp:wrapNone/>"
+        }
+        let behind = image.wrap == .behindText ? "1" : "0"
+        return """
+            <w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" \
+            relativeHeight="251659264" behindDoc="\(behind)" locked="0" layoutInCell="1" allowOverlap="1">\
+            <wp:simplePos x="0" y="0"/>\(horizontal)\(vertical)\(common)\(wrap)\(tail)</wp:anchor></w:drawing>
+            """
+    }
+
+    /// A picture's graphic, for a picture inserted in Libretto.
+    static func pictureGraphic(relationshipID: String, id: Int) -> String {
+        """
+        <a:graphic><a:graphicData uri="\(OOXML.pictureNamespace)"><pic:pic>\
+        <pic:nvPicPr><pic:cNvPr id="\(id)" name="Picture \(id)"/><pic:cNvPicPr/></pic:nvPicPr>\
+        <pic:blipFill><a:blip r:embed="\(relationshipID)"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>\
+        <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm>\
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>
+        """
+    }
+
+    /// The graphic at a new size, and a picture's crop.
+    private static func resized(_ graphic: String, cx: Int, cy: Int, crop: ImageCrop) -> String {
+        DOCXPatcher.editing(graphic) { root in
+            func visit(_ element: XMLElement) {
+                if element.name == "ext", element.parent?.name == "xfrm" {
+                    element.setAttribute("cx", String(cx))
+                    element.setAttribute("cy", String(cy))
+                }
+                if element.name == "blipFill" {
+                    element.children(named: "srcRect").forEach(element.removeChild)
+                    if !crop.isEmpty, let blip = element.children.firstIndex(where: { $0.name == "blip" }) {
+                        let source = XMLElement(name: "srcRect", qualifiedName: "a:srcRect", attributes: [:], qualifiedAttributes: [:])
+                        for (name, value) in [("l", crop.left), ("t", crop.top), ("r", crop.right), ("b", crop.bottom)] where value > 0 {
+                            source.setAttribute(name, String(Int(value * 100_000)))
+                        }
+                        element.insertChild(source, at: blip + 1)
+                    }
+                }
+                element.children.forEach(visit)
+            }
+            visit(root)
+        } ?? graphic
+    }
 }
 
 // MARK: - Headers and footers

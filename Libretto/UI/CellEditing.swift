@@ -123,7 +123,8 @@ extension DocumentTextController: UIGestureRecognizerDelegate {
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        cell(at: touch.location(in: textView)) != nil
+        let point = touch.location(in: textView)
+        return cell(at: point) != nil || floatingImage(at: point) != nil
     }
 
     func gestureRecognizer(
@@ -133,7 +134,17 @@ extension DocumentTextController: UIGestureRecognizerDelegate {
     }
 
     @objc func tappedTableCell(_ gesture: UITapGestureRecognizer) {
-        guard gesture.state == .ended, let (table, position, _) = cell(at: gesture.location(in: textView)) else { return }
+        guard gesture.state == .ended else { return }
+        let point = gesture.location(in: textView)
+        // A floating picture is picked out by its character, which takes no room in the text.
+        if let location = floatingImage(at: point) {
+            DispatchQueue.main.async {
+                self.textView.selectedRange = NSRange(location: location, length: 1)
+                self.selectionDidChange()
+            }
+            return
+        }
+        guard let (table, position, _) = cell(at: point) else { return }
         beginCellEditing(table: table, at: position)
     }
 
