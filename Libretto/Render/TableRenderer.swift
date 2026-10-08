@@ -120,6 +120,17 @@ enum TableRenderer {
                 ))
             }
         }
+        // An equation in a cell reads as its text: the cell is drawn as plain text, not laid out.
+        var equations: [(NSRange, String)] = []
+        output.enumerateAttribute(.librettoToken, in: NSRange(location: 0, length: output.length)) { value, range, _ in
+            guard let box = value as? InlineBox, case .paragraphChild(let xml, let display) = box.inline.content,
+                  MathRenderer.isEquation(xml) else { return }
+            equations.append((range, display ?? ""))
+        }
+        for (range, text) in equations.reversed() {
+            let attributes = output.attributes(at: range.location, effectiveRange: nil)
+            output.replaceCharacters(in: range, with: NSAttributedString(string: text, attributes: attributes))
+        }
         // Drawn text has no use for attachments it cannot show.
         output.removeAttribute(.attachment, range: NSRange(location: 0, length: output.length))
         return output
