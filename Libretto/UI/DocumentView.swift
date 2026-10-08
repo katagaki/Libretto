@@ -192,6 +192,7 @@ struct DocumentView: View {
         case .notes: NotesPanel(document: wordDocument, state: state)
         case .navigator: NavigatorPanel(document: wordDocument, state: state)
         case .crossReference: CrossReferencePanel(document: wordDocument, state: state)
+        case .symbols: SymbolPanel(state: state)
         }
     }
 

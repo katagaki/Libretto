@@ -106,6 +106,7 @@ struct FloatingActionBar: View {
             Button("Insert.Table", systemImage: "tablecells") { state.presentedPanel = .insertTable }
             Button("Insert.Picture", systemImage: "photo") { state.isPickingPhoto = true }
             Button("Insert.Link", systemImage: "link") { state.presentedPanel = .link }
+            Button("Insert.Symbol", systemImage: "character") { state.presentedPanel = .symbols }
             Button("Insert.Contents", systemImage: "list.bullet.rectangle") { controller?.insertTableOfContents() }
             Menu("Insert.Field", systemImage: "curlybraces") {
                 Button("Field.Date") { controller?.insertField("DATE \\@ \"d MMMM yyyy\"") }

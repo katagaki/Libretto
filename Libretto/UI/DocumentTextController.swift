@@ -913,6 +913,13 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         selectionDidChange()
     }
 
+    /// Puts a character in at the selection, as if typed.
+    func insertSymbol(_ symbol: String) {
+        let selection = textView.selectedRange
+        let text = NSAttributedString(string: symbol, attributes: typingAttributes(at: selection.location))
+        insert(text, at: selection, selecting: selection.location + (symbol as NSString).length)
+    }
+
     func insertPageBreak() {
         let selection = textView.selectedRange
         let text = NSAttributedString(string: TextCharacters.pageBreak, attributes: typingAttributes(at: selection.location))

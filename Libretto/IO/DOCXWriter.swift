@@ -192,6 +192,23 @@ struct BodyWriter {
             // A deleted field's code is deleted field code.
             return xml.replacing(#/^<(\w+:)?instrText\b/#) { "<\($0.output.1 ?? "")delInstrText" }
                 .replacing(#/</(\w+:)?instrText>$/#) { "</\($0.output.1 ?? "")delInstrText>" }
+        case .text(let text) where text.contains("\u{2011}") || text.contains("\u{00AD}"):
+            // Word's own non-breaking and optional hyphens, between the text around them.
+            var output = ""
+            var pending = ""
+            func flush() {
+                if !pending.isEmpty { output += "<w:t xml:space=\"preserve\">\(XMLLite.escape(pending))</w:t>" }
+                pending = ""
+            }
+            for character in text {
+                switch character {
+                case "\u{2011}": flush(); output += "<w:noBreakHyphen/>"
+                case "\u{00AD}": flush(); output += "<w:softHyphen/>"
+                default: pending.append(character)
+                }
+            }
+            flush()
+            return output
         case .text(let text):
             return "<w:t xml:space=\"preserve\">\(XMLLite.escape(text))</w:t>"
         case .tab:

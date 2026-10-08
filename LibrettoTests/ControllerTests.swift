@@ -161,6 +161,23 @@ struct ControllerTests {
         #expect(cell.blocks.first?.paragraphs.first?.inlines.first?.format.style.isBold == true)
     }
 
+    @Test("Symbols go in as typed, and Word's own hyphens are written as Word writes them")
+    func symbols() throws {
+        let (controller, _, latest) = makeController()
+        type("well", into: controller)
+        controller.insertSymbol("\u{2011}")
+        type("known", into: controller)
+        controller.insertSymbol("\u{2014}")
+        controller.flush()
+        let document = try #require(latest())
+        guard case .paragraph(let paragraph) = document.body[0] else { return }
+        #expect(paragraph.plainText == "well\u{2011}known\u{2014}")
+        let xml = String(decoding: try ZipArchive.entries(in: DOCXWriter.data(from: document))["word/document.xml"]!, as: UTF8.self)
+        #expect(xml.contains("<w:t xml:space=\"preserve\">well</w:t><w:noBreakHyphen/><w:t xml:space=\"preserve\">known\u{2014}</w:t>"))
+        let reread = try DOCXReader.document(from: DOCXWriter.data(from: document))
+        #expect(reread.allParagraphs.first?.plainText == "well\u{2011}known\u{2014}")
+    }
+
     @Test("Return after a heading starts a body paragraph")
     func nextStyle() throws {
         let (controller, _, latest) = makeController()

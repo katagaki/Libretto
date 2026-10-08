@@ -14,6 +14,7 @@ enum EditorPanel: String, Identifiable, Hashable {
     case notes
     case navigator
     case crossReference
+    case symbols
 
     var id: String { rawValue }
 
@@ -31,6 +32,7 @@ enum EditorPanel: String, Identifiable, Hashable {
         case .notes: return String(localized: "Panel.Notes.Title")
         case .navigator: return String(localized: "Panel.Navigator.Title")
         case .crossReference: return String(localized: "Panel.CrossReference.Title")
+        case .symbols: return String(localized: "Panel.Symbols.Title")
         }
     }
 }
