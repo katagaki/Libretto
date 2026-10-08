@@ -524,7 +524,17 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
                   let stops = styles.resolvedParagraphProperties(box.paragraph.properties).tabStops,
                   stops.contains(where: { $0.leader != nil }) else { continue }
             let glyph = glyphIndexForCharacter(at: found.location)
-            let rect = boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+            // From where the tab starts to where the next glyph does, on the same line.
+            var lineGlyphs = NSRange()
+            let fragment = lineFragmentRect(forGlyphAt: glyph, effectiveRange: &lineGlyphs)
+            // A tab is a control glyph, with no place of its own: it starts where the glyph before it ends.
+            let start = glyph > lineGlyphs.location
+                ? boundingRect(forGlyphRange: NSRange(location: glyph - 1, length: 1), in: container).maxX
+                : fragment.minX
+            let end = glyph + 1 < NSMaxRange(lineGlyphs)
+                ? fragment.minX + location(forGlyphAt: glyph + 1).x
+                : lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil).maxX
+            let rect = CGRect(x: start, y: fragment.minY, width: end - start, height: fragment.height)
             guard rect.width > 6,
                   let leader = stops.first(where: { CGFloat($0.position) / 20 >= rect.maxX - 1 })?.leader else { continue }
             let mark: String
@@ -539,8 +549,9 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
             let drawn: [NSAttributedString.Key: Any] = [
                 .font: font, .foregroundColor: attributes[.foregroundColor] ?? UIColor.label,
             ]
-            let markWidth = (mark as NSString).size(withAttributes: drawn).width * 1.6
-            let count = Int((rect.width - 4) / max(markWidth, 1))
+            // A mark and the space after it, as many as fit.
+            let unit = ((mark + " ") as NSString).size(withAttributes: drawn).width
+            let count = Int((rect.width - 4) / max(unit, 1))
             guard count > 0 else { continue }
             let leaderText = Array(repeating: mark, count: count).joined(separator: " ")
             let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
