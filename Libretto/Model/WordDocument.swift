@@ -500,6 +500,59 @@ struct InlineImage: Equatable, Sendable {
     var crop = ImageCrop()
     /// Changed in Libretto, so its drawing is written afresh around the picture it holds.
     var isEdited = false
+    /// What the drawing is, when it is not a picture from an image part: a
+    /// shape or text box, a chart, or a SmartArt diagram, drawn from its description.
+    var object: DrawingObject?
+}
+
+enum DrawingObject: Equatable, Hashable, Sendable {
+    case shape(ShapeSpec)
+    case chart(ChartSpec)
+    /// A diagram's shapes, each placed in the diagram's own frame, in points.
+    case diagram([ShapeSpec])
+}
+
+/// A DrawingML shape: its outline's form, fill and line, and its text.
+struct ShapeSpec: Equatable, Hashable, Sendable {
+    /// `a:prstGeom`'s `prst`: `rect`, `roundRect`, `ellipse`, `triangle`, `rightArrow` and the rest.
+    var geometry = "rect"
+    /// Six-digit RGB, or `nil` for none.
+    var fillHex: String? = "4472C4"
+    var lineHex: String? = "2F528F"
+    /// Points.
+    var lineWidth: Double = 1
+    var text = ""
+    var textColorHex: String?
+    /// Points; `nil` for the document's body size.
+    var fontSize: Double?
+    var isTextBox = false
+    /// Where it sits within a diagram, in points; `nil` for a shape of its own.
+    var frame: ShapeFrame?
+    /// The text as read, to tell whether it has been edited.
+    var originalText: String?
+}
+
+struct ShapeFrame: Equatable, Hashable, Sendable {
+    var x, y, width, height: Double
+}
+
+/// A chart, from the values its chart part caches.
+struct ChartSpec: Equatable, Hashable, Sendable {
+    enum Kind: String, Sendable {
+        case column, bar, line, area, pie, doughnut, scatter
+    }
+
+    struct Series: Equatable, Hashable, Sendable {
+        var name: String
+        var values: [Double]
+        var colorHex: String?
+    }
+
+    var kind: Kind = .column
+    var title: String?
+    var categories: [String] = []
+    var series: [Series] = []
+    var isStacked = false
 }
 
 enum ImageWrap: String, CaseIterable, Sendable {

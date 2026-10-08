@@ -35,7 +35,8 @@ enum DOCXReader {
         guard !bodies.isEmpty else { throw DOCXError.missingBody }
 
         let context = ReadContext(
-            namespaces: root.namespaceDeclarations, relationships: relationships, styles: styles
+            namespaces: root.namespaceDeclarations, relationships: relationships, styles: styles,
+            drawings: DrawingObjectReader.Package(parts: parts, relationships: relationships, documentPath: documentPath)
         )
         // Some writers split the body in two. Rather than lose what the
         // later ones hold, Libretto reads them as one, ending with the last
@@ -132,12 +133,18 @@ private final class ReadContext {
     let namespaces: [String: String]
     let relationships: [String: DocumentPackage.Relationship]
     let styles: StyleSheet
+    /// What charts and diagrams are read from.
+    let drawings: DrawingObjectReader.Package
     var report = UnsupportedFeatureReport()
 
-    init(namespaces: [String: String], relationships: [String: DocumentPackage.Relationship], styles: StyleSheet) {
+    init(
+        namespaces: [String: String], relationships: [String: DocumentPackage.Relationship], styles: StyleSheet,
+        drawings: DrawingObjectReader.Package
+    ) {
         self.namespaces = namespaces
         self.relationships = relationships
         self.styles = styles
+        self.drawings = drawings
     }
 
     func serialize(_ element: XMLElement) -> String? {
@@ -326,16 +333,25 @@ private final class ReadContext {
                 let scalar = UnicodeScalar(code >= 0xF000 ? code - 0xF000 : code) ?? "\u{25A1}"
                 keep(child, display: String(Character(scalar)))
             case "drawing":
-                if let image = image(from: child) {
+                if let image = image(from: child) ?? object(from: child, keeping: child) {
                     add(.image(image))
                 } else {
                     report.insert(.shapes)
                     keep(child, display: "\u{25A2}")
                 }
             case "AlternateContent":
-                // Usually a shape with a picture of itself as the fallback.
-                report.insert(.shapes)
-                keep(child, display: "\u{25A2}")
+                // Usually a shape, with an old-style picture of itself as the fallback: the shape is read,
+                // and the whole is kept to write back.
+                let choice = child.children(named: "Choice").first { $0.firstChild(named: "drawing") != nil }
+                if let drawing = choice?.firstChild(named: "drawing"),
+                   let image = image(from: drawing) ?? object(from: drawing, keeping: child) {
+                    var image = image
+                    image.xml = serialize(child)
+                    add(.image(image))
+                } else {
+                    report.insert(.shapes)
+                    keep(child, display: "\u{25A2}")
+                }
             case "pict", "object":
                 report.insert(child.name == "object" ? .embeddedObjects : .shapes)
                 keep(child, display: "\u{25A2}")
@@ -372,6 +388,23 @@ private final class ReadContext {
             func fraction(_ name: String) -> Double { (Double(source.attribute(name) ?? "") ?? 0) / 100_000 }
             image.crop = ImageCrop(left: fraction("l"), top: fraction("t"), right: fraction("r"), bottom: fraction("b"))
         }
+        if container.name == "anchor" { DrawingReader.readPlacement(of: container, into: &image) }
+        return image
+    }
+
+    /// A drawing that is not a picture, as an object to draw: a shape, a chart, a diagram.
+    private func object(from drawing: XMLElement, keeping kept: XMLElement) -> InlineImage? {
+        guard let container = drawing.children.first(where: { $0.name == "inline" || $0.name == "anchor" }),
+              let object = DrawingObjectReader.object(in: container, package: drawings) else { return nil }
+        let extent = container.firstChild(named: "extent")
+        let width = Double(extent?.attribute("cx") ?? "") ?? 0
+        let height = Double(extent?.attribute("cy") ?? "") ?? 0
+        guard width > 0, height > 0 else { return nil }
+        var image = InlineImage(
+            relationshipID: "", width: width / 12_700, height: height / 12_700,
+            xml: serialize(kept), isFloating: container.name == "anchor"
+        )
+        image.object = object
         if container.name == "anchor" { DrawingReader.readPlacement(of: container, into: &image) }
         return image
     }

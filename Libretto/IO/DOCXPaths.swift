@@ -60,6 +60,7 @@ enum OOXML {
         "wp": drawingNamespace,
         "a": drawingMainNamespace,
         "pic": pictureNamespace,
+        "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
     ]
 }
 

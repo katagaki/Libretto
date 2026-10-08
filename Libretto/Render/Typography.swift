@@ -45,8 +45,22 @@ final class ImageStore: @unchecked Sendable {
         return image
     }
 
-    /// A picture with what its crop cuts off taken away.
+    /// A picture with what its crop cuts off taken away, or a shape, chart or diagram, drawn.
     func image(for picture: InlineImage, in package: DocumentPackage) -> UIImage? {
+        if let object = picture.object {
+            let key = "object:\(object.hashValue):\(Int(picture.width))x\(Int(picture.height))"
+            lock.lock()
+            if let cached = images[key] {
+                lock.unlock()
+                return cached
+            }
+            lock.unlock()
+            let drawn = ObjectRenderer.image(for: object, size: CGSize(width: picture.width, height: picture.height))
+            lock.lock()
+            images[key] = drawn
+            lock.unlock()
+            return drawn
+        }
         guard !picture.crop.isEmpty else { return image(forRelationship: picture.relationshipID, in: package) }
         let crop = picture.crop
         let key = "\(picture.relationshipID)#\(crop.left),\(crop.top),\(crop.right),\(crop.bottom)"

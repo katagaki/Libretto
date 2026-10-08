@@ -31,11 +31,42 @@ struct PicturePanel: View {
                     }
                 }
 
-                Section("Picture.Section.Crop") {
-                    cropSlider("Picture.Crop.Left", \.left, image)
-                    cropSlider("Picture.Crop.Right", \.right, image)
-                    cropSlider("Picture.Crop.Top", \.top, image)
-                    cropSlider("Picture.Crop.Bottom", \.bottom, image)
+                if case .shape(let shape) = image.object {
+                    Section("Picture.Section.Shape") {
+                        TextField("Shape.Text", text: Binding(
+                            get: { shape.text },
+                            set: { text in controller?.updateSelectedShape { $0.text = text } }
+                        ), axis: .vertical)
+                        .lineLimit(1...5)
+                        .accessibilityIdentifier("shape.text")
+                        LabeledContent("Shape.Fill") { EmptyView() }
+                        SystemColorSwatches(
+                            role: .fill, selectedHex: shape.fillHex.map { "FF" + $0 },
+                            customColor: Binding(
+                                get: { Color(argbHex: shape.fillHex) ?? .clear },
+                                set: { color in controller?.updateSelectedShape { $0.fillHex = color.argbHex.map { String($0.suffix(6)) } } }
+                            ),
+                            onSelect: { swatch in controller?.updateSelectedShape { $0.fillHex = String(swatch.argbHex.suffix(6)) } },
+                            onClear: { controller?.updateSelectedShape { $0.fillHex = nil } }
+                        )
+                        LabeledContent("Shape.Line") { EmptyView() }
+                        SystemColorSwatches(
+                            role: .border, selectedHex: shape.lineHex.map { "FF" + $0 },
+                            customColor: Binding(
+                                get: { Color(argbHex: shape.lineHex) ?? .clear },
+                                set: { color in controller?.updateSelectedShape { $0.lineHex = color.argbHex.map { String($0.suffix(6)) } } }
+                            ),
+                            onSelect: { swatch in controller?.updateSelectedShape { $0.lineHex = String(swatch.argbHex.suffix(6)) } },
+                            onClear: { controller?.updateSelectedShape { $0.lineHex = nil } }
+                        )
+                    }
+                } else if image.object == nil {
+                    Section("Picture.Section.Crop") {
+                        cropSlider("Picture.Crop.Left", \.left, image)
+                        cropSlider("Picture.Crop.Right", \.right, image)
+                        cropSlider("Picture.Crop.Top", \.top, image)
+                        cropSlider("Picture.Crop.Bottom", \.bottom, image)
+                    }
                 }
 
                 Section("Picture.Section.Wrap") {

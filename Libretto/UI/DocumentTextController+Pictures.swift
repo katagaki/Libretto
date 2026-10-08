@@ -45,6 +45,36 @@ extension DocumentTextController {
         return picture.size
     }
 
+    /// Puts in a shape, or a text box, floating at the selection's paragraph, text going round it.
+    func insertShape(_ geometry: String, isTextBox: Bool = false) {
+        let shape = ShapeSpec(
+            geometry: geometry, fillHex: isTextBox ? "FFFFFF" : "4472C4", lineHex: isTextBox ? "000000" : "2F528F",
+            lineWidth: isTextBox ? 0.75 : 1, isTextBox: isTextBox
+        )
+        var picture = InlineImage(relationshipID: "", width: isTextBox ? 180 : 120, height: isTextBox ? 72 : 80, xml: nil)
+        picture.object = .shape(shape)
+        picture.wrap = .square
+        picture.alignment = .center
+        picture.isFloating = true
+        picture.isEdited = true
+        let selection = textView.selectedRange
+        let inline = Inline(.image(picture), format: runBox(forTypingAt: selection.location).format)
+        var attributes = typingAttributes(at: selection.location)
+        attributes[.attachment] = DocumentRenderer.imageAttachment(picture, inline: inline, context: context)
+        insert(NSAttributedString(string: TextCharacters.attachment, attributes: attributes), at: selection, selecting: selection.location)
+        textView.selectedRange = NSRange(location: selection.location, length: 1)
+        selectionDidChange()
+    }
+
+    /// Changes the shape the selection is on: its text, fill or line.
+    func updateSelectedShape(_ change: (inout ShapeSpec) -> Void) {
+        updateSelectedImage { picture in
+            guard case .shape(var shape) = picture.object else { return }
+            change(&shape)
+            picture.object = .shape(shape)
+        }
+    }
+
     func deleteSelectedImage() {
         guard let (range, _) = selectedImage else { return }
         storage.deleteCharacters(in: range)

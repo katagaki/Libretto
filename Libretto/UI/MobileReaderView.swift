@@ -95,7 +95,7 @@ struct MobileLayout {
                 // Pictures stand on their own, at the width of the screen.
                 for (offset, inline) in paragraph.inlines.enumerated() {
                     if case .image(let image) = inline.content,
-                       let picture = context.images.image(forRelationship: image.relationshipID, in: document.package) {
+                       let picture = context.images.image(for: image, in: document.package) {
                         items.append(MobileItem(id: "\(id)-image-\(offset)", content: .image(picture, width: image.width)))
                         lastWasSpacer = false
                     }

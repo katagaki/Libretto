@@ -108,6 +108,15 @@ struct FloatingActionBar: View {
         Menu {
             Button("Insert.Table", systemImage: "tablecells") { state.presentedPanel = .insertTable }
             Button("Insert.Picture", systemImage: "photo") { state.isPickingPhoto = true }
+            Menu("Insert.Shape", systemImage: "square.on.circle") {
+                Button("Insert.TextBox", systemImage: "character.textbox") { controller?.insertShape("rect", isTextBox: true) }
+                Divider()
+                ForEach(Self.shapes, id: \.geometry) { shape in
+                    Button(LocalizedStringKey("Shape.\(shape.geometry)"), systemImage: shape.symbol) {
+                        controller?.insertShape(shape.geometry)
+                    }
+                }
+            }
             Button("Insert.Link", systemImage: "link") { state.presentedPanel = .link }
             Button("Insert.Symbol", systemImage: "character") { state.presentedPanel = .symbols }
             Button("Insert.Contents", systemImage: "list.bullet.rectangle") { controller?.insertTableOfContents() }
@@ -147,6 +156,12 @@ struct FloatingActionBar: View {
         .accessibilityIdentifier("insert")
         .accessibilityLabel("ActionBar.Insert")
     }
+
+    /// The shapes the Insert menu offers, with a symbol each.
+    private static let shapes: [(geometry: String, symbol: String)] = [
+        ("rect", "rectangle"), ("roundRect", "rectangle.roundedtop"), ("ellipse", "circle"), ("triangle", "triangle"),
+        ("diamond", "diamond"), ("rightArrow", "arrow.right"), ("star5", "star"), ("line", "line.diagonal"),
+    ]
 
     /// Inserts a note and opens the notes panel to write it.
     private func insertNote(_ kind: NoteKind) {

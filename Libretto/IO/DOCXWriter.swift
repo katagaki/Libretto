@@ -290,9 +290,17 @@ enum DrawingWriter {
     static func xml(for image: InlineImage, id fallbackID: Int) -> String {
         let cx = Int(image.width * 12_700)
         let cy = Int(image.height * 12_700)
-        var graphic = image.xml.flatMap { xml in xml.firstMatch(of: graphicPattern).map { String($0.output.0) } }
-            ?? pictureGraphic(relationshipID: image.relationshipID, id: fallbackID)
+        let made: String
+        if case .shape(let shape) = image.object {
+            made = shapeGraphic(shape)
+        } else {
+            made = pictureGraphic(relationshipID: image.relationshipID, id: fallbackID)
+        }
+        var graphic = image.xml.flatMap { xml in xml.firstMatch(of: graphicPattern).map { String($0.output.0) } } ?? made
         graphic = resized(graphic, cx: cx, cy: cy, crop: image.crop)
+        if case .shape(let shape) = image.object, image.xml != nil, shape.text != shape.originalText {
+            graphic = retexted(graphic, shape)
+        }
         let properties = image.xml.flatMap { $0.firstMatch(of: documentProperties) }
         let id = properties.map { String($0.output.1) } ?? String(fallbackID)
         let name = properties.map { String($0.output.2) } ?? "Picture \(fallbackID)"
@@ -328,6 +336,54 @@ enum DrawingWriter {
             relativeHeight="251659264" behindDoc="\(behind)" locked="0" layoutInCell="1" allowOverlap="1">\
             <wp:simplePos x="0" y="0"/>\(horizontal)\(vertical)\(common)\(wrap)\(tail)</wp:anchor></w:drawing>
             """
+    }
+
+    /// A shape's graphic, for a shape or text box inserted in Libretto.
+    static func shapeGraphic(_ shape: ShapeSpec) -> String {
+        let fill = shape.fillHex.map { "<a:solidFill><a:srgbClr val=\"\($0)\"/></a:solidFill>" } ?? "<a:noFill/>"
+        let line = shape.lineHex.map {
+            "<a:ln w=\"\(Int(shape.lineWidth * 12_700))\"><a:solidFill><a:srgbClr val=\"\($0)\"/></a:solidFill></a:ln>"
+        } ?? "<a:ln><a:noFill/></a:ln>"
+        let text = shape.text.isEmpty && !shape.isTextBox
+            ? "" : "<wps:txbx><w:txbxContent>\(textParagraphs(shape, pPr: nil, rPr: nil))</w:txbxContent></wps:txbx>"
+        return """
+            <a:graphic><a:graphicData uri="\(DrawingObjectReader.shapeURI)"><wps:wsp>\
+            <wps:cNvSpPr\(shape.isTextBox ? " txBox=\"1\"" : "")/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></a:xfrm>\
+            <a:prstGeom prst="\(XMLLite.escape(shape.geometry))"><a:avLst/></a:prstGeom>\(fill)\(line)</wps:spPr>\(text)\
+            <wps:bodyPr rot="0" vert="horz" wrap="square" lIns="91440" tIns="45720" rIns="91440" bIns="45720" \
+            anchor="\(shape.isTextBox ? "t" : "ctr")"><a:noAutofit/></wps:bodyPr></wps:wsp></a:graphicData></a:graphic>
+            """
+    }
+
+    /// A shape's text as the paragraphs of its text box.
+    private static func textParagraphs(_ shape: ShapeSpec, pPr: String?, rPr: String?) -> String {
+        let color = shape.textColorHex ?? (shape.isTextBox || shape.fillHex == nil ? nil : "FFFFFF")
+        let runProperties = rPr ?? color.map { "<w:rPr><w:color w:val=\"\($0)\"/></w:rPr>" } ?? ""
+        let paragraphProperties = pPr ?? (shape.isTextBox ? "" : "<w:pPr><w:jc w:val=\"center\"/></w:pPr>")
+        return shape.text.components(separatedBy: "\n").map { line in
+            let run = line.isEmpty ? "" : "<w:r>\(runProperties)<w:t xml:space=\"preserve\">\(XMLLite.escape(line))</w:t></w:r>"
+            return "<w:p>\(paragraphProperties)\(run)</w:p>"
+        }.joined()
+    }
+
+    /// The graphic with its text box's text written afresh, in the formatting its first words had.
+    private static func retexted(_ graphic: String, _ shape: ShapeSpec) -> String {
+        DOCXPatcher.editing(graphic) { root in
+            func find(_ element: XMLElement) -> XMLElement? {
+                if element.name == "txbxContent" { return element }
+                for child in element.children { if let found = find(child) { return found } }
+                return nil
+            }
+            guard let content = find(root) else { return }
+            let first = content.children.first { $0.name == "p" }
+            let pPr = first?.firstChild(named: "pPr").flatMap { XMLLite.serialize($0, inheritedNamespaces: DOCXPatcher.namespaceBindings(for: graphic)) }
+            let run = first?.children.first { $0.name == "r" }
+            let rPr = run?.firstChild(named: "rPr").flatMap { XMLLite.serialize($0, inheritedNamespaces: DOCXPatcher.namespaceBindings(for: graphic)) }
+            content.children.filter { $0.name == "p" }.forEach(content.removeChild)
+            let xml = "<w:txbxContent>\(textParagraphs(shape, pPr: pPr, rPr: rPr))</w:txbxContent>"
+            guard let fresh = XMLLite.fragment(xml, namespaces: DOCXPatcher.namespaceBindings(for: xml)) else { return }
+            for paragraph in fresh.children { content.insertChild(paragraph, at: content.children.count) }
+        } ?? graphic
     }
 
     /// A picture's graphic, for a picture inserted in Libretto.
