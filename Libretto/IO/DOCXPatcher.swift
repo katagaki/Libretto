@@ -18,6 +18,14 @@ enum DOCXPatcher {
         return XMLLite.serialize(element, inheritedNamespaces: namespaces)
     }
 
+    /// Bindings for just the prefixes a fragment uses: the destination's own
+    /// where it has them, so grafting the fragment in declares nothing anew.
+    static func usedBindings(for xml: String, in scope: [String: String]) -> [String: String] {
+        namespaceBindings(for: xml).merging(scope) { _, own in own }.filter { prefix, _ in
+            !prefix.isEmpty && (xml.contains("<\(prefix):") || xml.contains(" \(prefix):") || xml.contains("</\(prefix):"))
+        }
+    }
+
     /// The standard prefixes, and a stand-in binding for every other prefix the fragment uses.
     static func namespaceBindings(for xml: String) -> [String: String] {
         var result = OOXML.standardNamespaces

@@ -572,9 +572,9 @@ private struct PackageEditor {
         if let existing, !existing.isExternal {
             let path = DOCXPaths.resolve(existing.target, relativeTo: documentPath)
             edit(path) { root in
-                let namespaces = DOCXPatcher.namespaceBindings(
-                    for: HeaderFooterWriter.paragraphsXML(text, styleID: styleID)
-                ).merging(root.namespaceDeclarations) { _, own in own }
+                let namespaces = DOCXPatcher.usedBindings(
+                    for: HeaderFooterWriter.paragraphsXML(text, styleID: styleID), in: root.namespaceDeclarations
+                )
                 let index = root.children.firstIndex { content.contains($0.name) } ?? root.children.count
                 root.children.filter { content.contains($0.name) }.forEach(root.removeChild)
                 for (offset, xml) in HeaderFooterWriter.paragraphs(text, styleID: styleID).enumerated() {
