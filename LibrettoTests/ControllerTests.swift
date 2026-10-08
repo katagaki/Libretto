@@ -133,6 +133,34 @@ struct ControllerTests {
         #expect(DocumentTextController.linkTarget("me@example.com").url == "mailto:me@example.com")
     }
 
+    @Test("A cell edited on the page keeps its formatting, and Tab goes on to the next")
+    func editsCellInPlace() throws {
+        let (controller, _, latest) = makeController()
+        controller.insertTable(rows: 2, columns: 3)
+        var table = try #require(latest()?.body.compactMap { if case .table(let table) = $0 { return table } else { return nil } }.first)
+        TableEditing.setText("Bold", row: 0, cell: 1, in: &table)
+        table.rows[0].cells[1].blocks = table.rows[0].cells[1].blocks.map { block in
+            guard case .paragraph(var paragraph) = block else { return block }
+            paragraph.inlines[0].format.style.isBold = true
+            return .paragraph(paragraph)
+        }
+        controller.replaceTable(table)
+
+        controller.beginCellEditing(table: table, at: CellPosition(row: 0, column: 1))
+        let editor = try #require(controller.cellSession?.editor)
+        #expect(editor.text == "Bold")
+        editor.selectedRange = NSRange(location: 4, length: 0)
+        editor.insertText(" text")
+        controller.endCellEditing(thenMove: 1)
+        #expect(controller.cellSession?.position == CellPosition(row: 0, column: 2))
+        controller.endCellEditing()
+
+        let edited = try #require(latest()?.body.compactMap { if case .table(let table) = $0 { return table } else { return nil } }.first)
+        let cell = edited.rows[0].cells[1]
+        #expect(cell.plainText == "Bold text")
+        #expect(cell.blocks.first?.paragraphs.first?.inlines.first?.format.style.isBold == true)
+    }
+
     @Test("Return after a heading starts a body paragraph")
     func nextStyle() throws {
         let (controller, _, latest) = makeController()

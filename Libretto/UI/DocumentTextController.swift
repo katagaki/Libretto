@@ -14,7 +14,7 @@ import UniformTypeIdentifiers
 @MainActor
 final class DocumentTextController: NSObject, UITextViewDelegate {
     var document: WordDocument
-    private var scheme: ColorScheme
+    var scheme: ColorScheme
     let storage = NSTextStorage()
     let layoutManager: PageLayoutManager
     let container = NSTextContainer()
@@ -34,6 +34,8 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     /// When this editing session's tracked changes are dated: one date for
     /// them all, so what is typed in a session reads as one change.
     let revisionDate = Reviewer.now
+    /// The table cell being edited where it is on the page, if one is.
+    var cellSession: CellEditingSession?
     private var pendingInsertion: NSRange?
     private var syncTask: Task<Void, Never>?
     /// Formatting chosen with nothing selected, for the text typed next.
@@ -62,6 +64,10 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
 
         textView.delegate = self
         textView.controller = self
+        // A tap on a table cell edits it in place.
+        let cellTap = UITapGestureRecognizer(target: self, action: #selector(tappedTableCell(_:)))
+        cellTap.delegate = self
+        textView.addGestureRecognizer(cellTap)
         render()
     }
 
@@ -79,6 +85,11 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
     /// Renders the whole document into the text, keeping the selection
     /// roughly where it was.
     func render() {
+        // The cell being edited is drawn afresh with the rest; what was typed in it is left to its session.
+        if let session = cellSession {
+            cellSession = nil
+            session.editor.removeFromSuperview()
+        }
         refreshContext()
         let selection = textView.selectedRange
         let rendered = DocumentRenderer.render(document.body, context: context)
