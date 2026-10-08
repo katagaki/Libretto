@@ -168,3 +168,76 @@ enum DOCXTemplate {
         ]
     }
 }
+
+/// Word's table styles the table panel offers, defined as Word defines them,
+/// for documents that do not have them yet.
+enum BuiltInTableStyle: String, CaseIterable, Identifiable, Sendable {
+    case grid = "TableGrid"
+    case gridLight = "GridTable1Light"
+    case gridAccent = "GridTable4-Accent1"
+    case listAccent = "ListTable3-Accent1"
+
+    var id: String { rawValue }
+
+    /// Word's own name for it, which does not change with Word's language.
+    var name: String {
+        switch self {
+        case .grid: return "Table Grid"
+        case .gridLight: return "Grid Table 1 Light"
+        case .gridAccent: return "Grid Table 4 Accent 1"
+        case .listAccent: return "List Table 3 Accent 1"
+        }
+    }
+
+    var xml: String {
+        func borders(_ color: String, inside: Bool = true, size: Int = 4) -> String {
+            let sides = ["top", "left", "bottom", "right"] + (inside ? ["insideH", "insideV"] : [])
+            return "<w:tblBorders>" + sides.map {
+                "<w:\($0) w:val=\"single\" w:sz=\"\(size)\" w:space=\"0\" w:color=\"\(color)\"/>"
+            }.joined() + "</w:tblBorders>"
+        }
+        let head = """
+            <w:style w:type="table" w:styleId="\(rawValue)"><w:name w:val="\(name)"/><w:basedOn w:val="TableNormal"/>\
+            <w:uiPriority w:val="39"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>
+            """
+        let margins = "<w:tblCellMar><w:left w:w=\"108\" w:type=\"dxa\"/><w:right w:w=\"108\" w:type=\"dxa\"/></w:tblCellMar>"
+        switch self {
+        case .grid:
+            return head + "<w:tblPr>\(borders("auto"))\(margins)</w:tblPr></w:style>"
+        case .gridLight:
+            return head + """
+                <w:tblPr><w:tblStyleRowBandSize w:val="1"/><w:tblStyleColBandSize w:val="1"/>\(borders("B4C6E7"))\(margins)</w:tblPr>\
+                <w:tblStylePr w:type="firstRow"><w:rPr><w:b/><w:bCs/></w:rPr><w:tblPr/><w:tcPr><w:tcBorders>\
+                <w:bottom w:val="single" w:sz="12" w:space="0" w:color="8EAADB"/></w:tcBorders></w:tcPr></w:tblStylePr>\
+                <w:tblStylePr w:type="firstCol"><w:rPr><w:b/><w:bCs/></w:rPr></w:tblStylePr></w:style>
+                """
+        case .gridAccent:
+            return head + """
+                <w:tblPr><w:tblStyleRowBandSize w:val="1"/><w:tblStyleColBandSize w:val="1"/>\(borders("8EAADB"))\(margins)</w:tblPr>\
+                <w:tblStylePr w:type="firstRow"><w:rPr><w:b/><w:bCs/><w:color w:val="FFFFFF"/></w:rPr><w:tblPr/>\
+                <w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="4472C4"/></w:tcPr></w:tblStylePr>\
+                <w:tblStylePr w:type="lastRow"><w:rPr><w:b/><w:bCs/></w:rPr></w:tblStylePr>\
+                <w:tblStylePr w:type="firstCol"><w:rPr><w:b/><w:bCs/></w:rPr></w:tblStylePr>\
+                <w:tblStylePr w:type="band1Horz"><w:tblPr/><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="D9E2F3"/></w:tcPr></w:tblStylePr>\
+                </w:style>
+                """
+        case .listAccent:
+            return head + """
+                <w:tblPr><w:tblStyleRowBandSize w:val="1"/><w:tblStyleColBandSize w:val="1"/>\
+                \(borders("4472C4", inside: false))\(margins)</w:tblPr>\
+                <w:tblStylePr w:type="firstRow"><w:rPr><w:b/><w:bCs/><w:color w:val="FFFFFF"/></w:rPr><w:tblPr/>\
+                <w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="4472C4"/></w:tcPr></w:tblStylePr>\
+                <w:tblStylePr w:type="firstCol"><w:rPr><w:b/><w:bCs/></w:rPr></w:tblStylePr>\
+                <w:tblStylePr w:type="band1Horz"><w:tblPr/><w:tcPr><w:tcBorders><w:top w:val="single" w:sz="4" \
+                w:space="0" w:color="4472C4"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="4472C4"/>\
+                </w:tcBorders></w:tcPr></w:tblStylePr></w:style>
+                """
+        }
+    }
+
+    /// The model of the style, read from the same XML that is written.
+    var style: StyleSheet.Style? {
+        guard let element = XMLLite.fragment(xml, namespaces: ["w": OOXML.wordNamespace]) else { return nil }
+        return StyleReader.style(from: element)
+    }
+}

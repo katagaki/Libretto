@@ -508,69 +508,6 @@ struct PageSetupPanel: View {
 
 // MARK: - Tables
 
-/// Edits the text of the table the selection is on, and its rows and columns.
-struct TablePanel: View {
-    @Bindable var state: EditorState
-    @State private var table: Table?
-
-    var body: some View {
-        Form {
-            if let table {
-                ForEach(Array(table.rows.enumerated()), id: \.element.id) { rowIndex, row in
-                    Section(String(format: String(localized: "Table.Row"), rowIndex + 1)) {
-                        ForEach(Array(row.cells.enumerated()), id: \.element.id) { cellIndex, cell in
-                            if cell.verticalMerge != .continue {
-                                TextField(
-                                    String(format: String(localized: "Table.Cell.Placeholder"), cellIndex + 1),
-                                    text: Binding(
-                                        get: { cell.plainText },
-                                        set: { setText($0, row: rowIndex, cell: cellIndex) }
-                                    ),
-                                    axis: .vertical
-                                )
-                                .accessibilityIdentifier("cell.\(rowIndex).\(cellIndex)")
-                            }
-                        }
-                    }
-                }
-                Section {
-                    Button("Table.AddRow", systemImage: "plus") { edit { TableEditing.addRow(to: &$0) } }
-                    Button("Table.AddColumn", systemImage: "plus") { edit { TableEditing.addColumn(to: &$0) } }
-                    Button("Table.RemoveRow", systemImage: "minus", role: .destructive) {
-                        edit { TableEditing.removeLastRow(from: &$0) }
-                    }
-                    .disabled(table.rows.count <= 1)
-                    Button("Table.RemoveColumn", systemImage: "minus", role: .destructive) {
-                        edit { TableEditing.removeLastColumn(from: &$0) }
-                    }
-                    .disabled(table.columnCount <= 1)
-                }
-                Section {
-                    Button("ActionBar.DeleteTable", role: .destructive) {
-                        state.controller?.deleteSelectedTable()
-                        state.presentedPanel = nil
-                    }
-                }
-            } else {
-                ContentUnavailableView("Table.None", systemImage: "tablecells")
-            }
-        }
-        .formStyle(.grouped)
-        .onAppear { table = state.controller?.selectedTable }
-    }
-
-    private func setText(_ text: String, row: Int, cell: Int) {
-        edit { TableEditing.setText(text, row: row, cell: cell, in: &$0) }
-    }
-
-    private func edit(_ change: (inout Table) -> Void) {
-        guard var current = table else { return }
-        change(&current)
-        table = current
-        state.controller?.replaceTable(current)
-    }
-}
-
 /// Changes to a table's structure and text, as the table panel makes them.
 enum TableEditing {
     static func setText(_ text: String, row: Int, cell: Int, in table: inout Table) {

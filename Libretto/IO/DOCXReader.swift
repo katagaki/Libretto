@@ -402,6 +402,7 @@ private final class ReadContext {
         table.originalXML = serialize(element)
         table.originalRows = rows
         table.originalGrid = grid
+        table.originalPropertiesXML = table.preservedPropertiesXML
         return table
     }
 

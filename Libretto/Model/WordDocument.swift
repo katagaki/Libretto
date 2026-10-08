@@ -608,8 +608,12 @@ struct Table: Equatable, Sendable, Identifiable {
     var originalXML: String?
     var originalRows: [TableRow]?
     var originalGrid: [Int]?
+    var originalPropertiesXML: String?
 
-    var isUnchanged: Bool { originalXML != nil && originalRows == rows && originalGrid == gridColumns }
+    var isUnchanged: Bool {
+        originalXML != nil && originalRows == rows && originalGrid == gridColumns
+            && originalPropertiesXML == preservedPropertiesXML
+    }
 
     var columnCount: Int {
         max(gridColumns.count, rows.map { $0.cells.reduce(0) { $0 + $1.gridSpan } }.max() ?? 0)

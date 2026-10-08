@@ -14,6 +14,7 @@ struct StyleSheet: Equatable, Sendable {
     /// Built-in styles Libretto added because the document used one it did
     /// not define, to be written into the styles part on save.
     var added: [ParagraphStyleChoice] = []
+    var addedTableStyles: [BuiltInTableStyle] = []
 
     struct Style: Equatable, Sendable {
         var id: String
@@ -183,6 +184,30 @@ struct StyleSheet: Equatable, Sendable {
         style.isQuick = true
         style.isCreated = true
         styles[id] = style
+        return id
+    }
+
+    /// Table styles to offer: the document's own, then Word's that it lacks.
+    var tableStyles: [(id: String, name: String)] {
+        let own = styles.values.filter { $0.kind == .table && !$0.isHidden && $0.id != defaultTableStyleID }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            .map { (id: $0.id, name: $0.name) }
+        let names = Set(own.map { $0.name.lowercased() })
+        return own + BuiltInTableStyle.allCases.filter { !names.contains($0.name.lowercased()) && styles[$0.rawValue] == nil }
+            .map { (id: $0.rawValue, name: $0.name) }
+    }
+
+    /// The table style a table without one uses, usually "Normal Table".
+    var defaultTableStyleID: String? {
+        styles.values.first { $0.kind == .table && $0.name.lowercased() == "normal table" }?.id
+    }
+
+    /// The ID of a table style to put a table in, adding Word's definition first if the document lacks it.
+    mutating func ensureTableStyle(_ id: String) -> String {
+        guard styles[id] == nil, let builtIn = BuiltInTableStyle(rawValue: id), var style = builtIn.style else { return id }
+        if style.basedOn.map({ styles[$0] == nil }) ?? false { style.basedOn = nil }
+        styles[id] = style
+        addedTableStyles.append(builtIn)
         return id
     }
 

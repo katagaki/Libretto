@@ -183,7 +183,7 @@ struct DocumentView: View {
         case .format: FormatPanel(state: state)
         case .paragraph: ParagraphPanel(document: wordDocument, state: state)
         case .pageSetup: PageSetupPanel(document: wordDocument, state: state)
-        case .table: TablePanel(state: state)
+        case .table: TablePanel(document: wordDocument, state: state)
         case .insertTable: InsertTablePanel(state: state)
         case .link: LinkPanel(state: state)
         case .headerFooter: HeaderFooterPanel(document: wordDocument, state: state)

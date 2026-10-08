@@ -15,7 +15,8 @@ enum DOCXWriter {
         package.parts = parts
 
         if !document.numbering.added.isEmpty { package.addLists(document.numbering) }
-        if !document.styles.added.isEmpty || document.styles.styles.values.contains(where: { $0.isCreated || $0.isModified }) {
+        if !document.styles.added.isEmpty || !document.styles.addedTableStyles.isEmpty
+            || document.styles.styles.values.contains(where: { $0.isCreated || $0.isModified }) {
             package.addStyles(document.styles)
         }
         for (id, media) in document.package.addedMedia.sorted(by: { $0.key < $1.key }) {
@@ -547,6 +548,15 @@ private struct PackageEditor {
                 let xml = BuiltInStyles.xml(for: choice)
                     .replacingOccurrences(of: "w:styleId=\"\(choice.defaultID)\"", with: "w:styleId=\"\(id)\"")
                     .replacingOccurrences(of: " w:default=\"1\"", with: "")
+                if let element = XMLLite.fragment(xml, namespaces: namespaces) {
+                    root.insertChild(element, at: root.children.count)
+                }
+            }
+            for builtIn in styles.addedTableStyles {
+                var xml = builtIn.xml
+                if styles.styles["TableNormal"] == nil {
+                    xml = xml.replacingOccurrences(of: "<w:basedOn w:val=\"TableNormal\"/>", with: "")
+                }
                 if let element = XMLLite.fragment(xml, namespaces: namespaces) {
                     root.insertChild(element, at: root.children.count)
                 }
