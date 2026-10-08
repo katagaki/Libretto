@@ -47,6 +47,14 @@ struct FloatingActionBar: View {
                         group {
                             insertMenu
                             panelAction("doc.badge.gearshape", label: "ActionBar.PageSetup", panel: .pageSetup)
+                            // Lit while changes are tracked, so it is never forgotten that they are.
+                            if state.isTracking {
+                                action("pencil.and.list.clipboard", isOn: true, label: "Toolbar.Review") {
+                                    state.presentedPanel = .review
+                                }
+                                .matchedTransitionSource(id: EditorPanel.review, in: namespace)
+                                .accessibilityIdentifier("trackingOn")
+                            }
                         }
 
                         if state.selectedTableID != nil {
