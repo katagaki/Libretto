@@ -113,3 +113,39 @@ struct TableStructureTests {
         #expect(!document.styles.tableStyles.contains { $0.id == "TableGrid" && $0.name == "Grid Table 4 Accent 1" })
     }
 }
+
+@MainActor
+@Suite("Tables across pages")
+struct TablePagesTests {
+    @Test("Header rows are drawn again at the top of each page a table runs on to")
+    func repeatsHeader() throws {
+        var table = Table(
+            rows: (0..<80).map { row in
+                TableRow(cells: [TableCell(blocks: [.paragraph(Paragraph(text: row == 0 ? "Region" : "Row \(row)"))])])
+            },
+            gridColumns: [4000], preservedPropertiesXML: nil, styleID: nil, hasBorders: true
+        )
+        TableEditing.setHeader(in: &table, row: 0, true)
+        var document = WordDocument()
+        document.body = [.table(table), .paragraph(Paragraph())]
+        let controller = DocumentTextController(document: document, scheme: .light)
+        let layout = controller.layoutManager
+        let storage = controller.textView.textStorage
+        // The first row on the second page.
+        var found: (glyph: Int, rect: CGRect)?
+        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, range, stop in
+            guard value is BlockAttachment else { return }
+            let glyph = layout.glyphIndexForCharacter(at: range.location)
+            let rect = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            if controller.geometry.page(containing: rect.midY) == 1 {
+                found = (glyph, rect)
+                stop.pointee = true
+            }
+        }
+        let (glyph, rect) = try #require(found)
+        let rowHeight = layout.attachmentSize(forGlyphAt: glyph).height
+        // Room for the header row above it, as tall as a row.
+        #expect(rect.height > rowHeight * 1.8)
+        #expect(abs(rect.minY - controller.geometry.textTop(1)) < 1)
+    }
+}

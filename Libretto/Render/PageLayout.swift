@@ -539,6 +539,15 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         guard let storage = textStorage else { return false }
         let characters = characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
         guard characters.length > 0 else { return false }
+        // A table row that starts a page partway through its table makes room above it for the header rows.
+        if let height = repeatedHeaderHeight(forRowAt: characters.location, line: lineFragmentRect.pointee) {
+            lineFragmentRect.pointee.size.height += height
+            lineFragmentUsedRect.pointee.origin.y += height
+            baselineOffset.pointee += height
+            headerRepeats[characters.location] = height
+            return true
+        }
+        headerRepeats[characters.location] = nil
         if storage.attribute(.librettoDropCap, at: characters.location, effectiveRange: nil) != nil {
             // A drop cap's line takes no room: its letter sits beside the next paragraph.
             var rect = lineFragmentRect.pointee
@@ -596,6 +605,56 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         rect.size.height = nextPageTop - rect.minY
         lineFragmentRect.pointee = rect
         return true
+    }
+
+    // MARK: - Repeated header rows
+
+    /// The rows given room for their table's header rows above them, by character, and how much.
+    private var headerRepeats: [Int: CGFloat] = [:]
+
+    /// The table and its header rows' pictures, for a table row's character.
+    private func headerRows(forRowAt location: Int) -> (images: [UIImage], isHeader: Bool, isFirst: Bool)? {
+        guard let storage = textStorage, location < storage.length,
+              let attachment = storage.attribute(.attachment, at: location, effectiveRange: nil) as? BlockAttachment,
+              let rowID = attachment.rowID, case .table(let table) = attachment.block,
+              let index = table.rows.firstIndex(where: { $0.id == rowID }) else { return nil }
+        let headers = table.rows.prefix { $0.isHeader }
+        guard !headers.isEmpty else { return nil }
+        // The header rows' pictures are on the table's line, before this one.
+        let line = (storage.string as NSString).paragraphRange(for: NSRange(location: location, length: 0))
+        let headerIDs = Set(headers.map(\.id))
+        var images: [UIImage] = []
+        storage.enumerateAttribute(.attachment, in: line) { value, _, _ in
+            if let row = value as? BlockAttachment, let id = row.rowID, headerIDs.contains(id), let image = row.image {
+                images.append(image)
+            }
+        }
+        return (images, index < headers.count, index == 0)
+    }
+
+    private func repeatedHeaderHeight(forRowAt location: Int, line: CGRect) -> CGFloat? {
+        guard let rows = headerRows(forRowAt: location), !rows.isHeader, !rows.isFirst else { return nil }
+        let page = geometry.page(containing: line.minY + 0.5)
+        guard abs(line.minY - geometry.textTop(page)) < 1 else { return nil }
+        let height = rows.images.reduce(0) { $0 + $1.size.height }
+        return height > 0 && height < geometry.shape(page).contentHeight / 2 ? height : nil
+    }
+
+    /// Draws the header rows above each row given room for them.
+    private func drawRepeatedHeaders(forGlyphRange glyphs: NSRange, at origin: CGPoint) {
+        guard !headerRepeats.isEmpty else { return }
+        let characters = characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        for (location, height) in headerRepeats where NSLocationInRange(location, characters) {
+            guard let rows = headerRows(forRowAt: location) else { continue }
+            let glyph = glyphIndexForCharacter(at: location)
+            let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            guard line.height > height else { continue }
+            var y = line.minY
+            for image in rows.images {
+                image.draw(at: CGPoint(x: origin.x + line.minX, y: origin.y + y))
+                y += image.size.height
+            }
+        }
     }
 
     // MARK: - Keeping text together
@@ -806,6 +865,7 @@ final class PageLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
         let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
         let string = storage.string as NSString
         drawTabLeaders(in: characters, at: origin)
+        drawRepeatedHeaders(forGlyphRange: glyphsToShow, at: origin)
         drawFloats(behindText: false, forGlyphRange: glyphsToShow, at: origin)
         storage.enumerateAttribute(.librettoListLabel, in: characters) { value, range, _ in
             guard let label = value as? ListLabelBox, !label.text.isEmpty else { return }
