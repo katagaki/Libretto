@@ -194,6 +194,7 @@ struct DocumentView: View {
         case .crossReference: CrossReferencePanel(document: wordDocument, state: state)
         case .symbols: SymbolPanel(state: state)
         case .picture: PicturePanel(document: wordDocument, state: state)
+        case .equation: EquationPanel(state: state)
         }
     }
 

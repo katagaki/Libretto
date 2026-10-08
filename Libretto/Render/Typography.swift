@@ -45,6 +45,24 @@ final class ImageStore: @unchecked Sendable {
         return image
     }
 
+    private var equations: [String: (image: UIImage, descent: CGFloat)] = [:]
+
+    /// An equation drawn at a size, in a colour.
+    func equation(_ xml: String, fontSize: CGFloat, color: UIColor) -> (image: UIImage, descent: CGFloat)? {
+        let key = "\(xml.hashValue):\(fontSize):\(color.hashValue)"
+        lock.lock()
+        if let cached = equations[key] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+        guard let drawn = MathRenderer.image(forXML: xml, fontSize: fontSize, color: color) else { return nil }
+        lock.lock()
+        equations[key] = drawn
+        lock.unlock()
+        return drawn
+    }
+
     /// A picture with what its crop cuts off taken away, or a shape, chart or diagram, drawn.
     func image(for picture: InlineImage, in package: DocumentPackage) -> UIImage? {
         if let object = picture.object {

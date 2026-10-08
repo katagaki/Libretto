@@ -16,6 +16,7 @@ enum EditorPanel: String, Identifiable, Hashable {
     case crossReference
     case symbols
     case picture
+    case equation
 
     var id: String { rawValue }
 
@@ -35,6 +36,7 @@ enum EditorPanel: String, Identifiable, Hashable {
         case .crossReference: return String(localized: "Panel.CrossReference.Title")
         case .symbols: return String(localized: "Panel.Symbols.Title")
         case .picture: return String(localized: "Panel.Picture.Title")
+        case .equation: return String(localized: "Panel.Equation.Title")
         }
     }
 }
@@ -160,6 +162,8 @@ final class EditorState {
     var isOnLink = false
     /// Whether the selection is on a picture, which the picture panel edits.
     var isOnImage = false
+    /// Whether the selection is on an equation, which the equation panel edits.
+    var isOnEquation = false
     /// Whether the selection is on a tracked change, and whether changes are being tracked.
     var isOnChange = false
     var isTracking = false

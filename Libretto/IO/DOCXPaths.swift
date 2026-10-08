@@ -61,6 +61,7 @@ enum OOXML {
         "a": drawingMainNamespace,
         "pic": pictureNamespace,
         "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+        "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
     ]
 }
 

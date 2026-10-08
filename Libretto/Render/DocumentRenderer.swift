@@ -100,6 +100,11 @@ enum DocumentRenderer {
                     maximumHeight: maximumImageHeight(in: base[.paragraphStyle] as? NSParagraphStyle, context: context)
                 )
                 string = TextCharacters.attachment
+            case .paragraphChild(let xml, _) where MathRenderer.isEquation(xml):
+                // An equation stands in its line as its picture, sitting on the baseline.
+                attributes[.attachment] = equationAttachment(xml, attributes: attributes, context: context)
+                attributes[.librettoToken] = InlineBox(inline, display: TextCharacters.attachment)
+                string = TextCharacters.attachment
             case .runChild(_, let display), .paragraphChild(_, let display):
                 let shown = display ?? ""
                 attributes[.librettoToken] = InlineBox(inline, display: shown)
@@ -167,6 +172,20 @@ enum DocumentRenderer {
         let tallest = maximumHeight ?? context.contentHeight * 0.75
         let scale = min(1, context.contentWidth / max(image.width, 1), tallest / max(image.height, 1))
         attachment.bounds = CGRect(x: 0, y: 0, width: image.width * scale, height: image.height * scale)
+        return attachment
+    }
+
+    static func equationAttachment(
+        _ xml: String, attributes: [NSAttributedString.Key: Any], context: RenderContext
+    ) -> NSTextAttachment {
+        let font = attributes[.font] as? UIFont ?? .systemFont(ofSize: 11)
+        let color = attributes[.foregroundColor] as? UIColor ?? context.defaultTextColor
+        let attachment = NSTextAttachment()
+        guard let drawn = context.images.equation(xml, fontSize: font.pointSize, color: color) else { return attachment }
+        attachment.image = drawn.image
+        attachment.bounds = CGRect(
+            x: 0, y: -drawn.descent, width: min(drawn.image.size.width, context.contentWidth), height: drawn.image.size.height
+        )
         return attachment
     }
 

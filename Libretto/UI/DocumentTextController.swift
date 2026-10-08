@@ -491,6 +491,8 @@ final class DocumentTextController: NSObject, UITextViewDelegate {
         if state.isOnLink != isOnLink { state.isOnLink = isOnLink }
         let isOnImage = selectedImage != nil
         if state.isOnImage != isOnImage { state.isOnImage = isOnImage }
+        let isOnEquation = selectedEquation != nil
+        if state.isOnEquation != isOnEquation { state.isOnEquation = isOnEquation }
         let isOnChange = revisionRange(around: selection.location) != nil
         if state.isOnChange != isOnChange { state.isOnChange = isOnChange }
         if state.isTracking != document.trackRevisions { state.isTracking = document.trackRevisions }

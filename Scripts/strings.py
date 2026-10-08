@@ -416,6 +416,14 @@ S = {
  "Shape.Text": ["Text", "テキスト", "텍스트", "文本", "文字"],
  "Shape.Fill": ["Fill", "塗りつぶし", "채우기", "填充", "填滿"],
  "Shape.Line": ["Line", "線", "선", "线条", "線條"],
+ "Panel.Equation.Title": ["Equation", "数式", "수식", "公式", "方程式"],
+ "Insert.Equation": ["Equation", "数式", "수식", "公式", "方程式"],
+ "ActionBar.EditEquation": ["Edit Equation", "数式を編集", "수식 편집", "编辑公式", "編輯方程式"],
+ "Equation.Placeholder": ["x = (-b ± sqrt(b^2 - 4ac))/(2a)", "x = (-b ± sqrt(b^2 - 4ac))/(2a)", "x = (-b ± sqrt(b^2 - 4ac))/(2a)", "x = (-b ± sqrt(b^2 - 4ac))/(2a)", "x = (-b ± sqrt(b^2 - 4ac))/(2a)"],
+ "Equation.Footer": ["a/b is a fraction, x^2 and x_i are scripts, sqrt(x) a root, sum_(i=1)^n, prod and int big operators, and \\alpha, \\pm, \\infty and the like symbols. Brackets group.", "a/b は分数、x^2 と x_i は上付き・下付き、sqrt(x) は根号、sum_(i=1)^n・prod・int は大型演算子、\\alpha・\\pm・\\infty などは記号です。かっこでまとめます。", "a/b는 분수, x^2와 x_i는 위 첨자와 아래 첨자, sqrt(x)는 근호, sum_(i=1)^n·prod·int는 큰 연산자, \\alpha·\\pm·\\infty 등은 기호입니다. 괄호로 묶습니다.", "a/b 为分数，x^2 和 x_i 为上下标，sqrt(x) 为根式，sum_(i=1)^n、prod、int 为大型运算符，\\alpha、\\pm、\\infty 等为符号。用括号分组。", "a/b 為分數，x^2 和 x_i 為上下標，sqrt(x) 為根號，sum_(i=1)^n、prod、int 為大型運算子，\\alpha、\\pm、\\infty 等為符號。用括號分組。"],
+ "Equation.Insert": ["Insert Equation", "数式を挿入", "수식 삽입", "插入公式", "插入方程式"],
+ "Equation.Update": ["Update Equation", "数式を更新", "수식 업데이트", "更新公式", "更新方程式"],
+ "Equation.Delete": ["Delete Equation", "数式を削除", "수식 삭제", "删除公式", "刪除方程式"],
 }
 
 reuse = ["Alert.Error.Title", "Common.OK", "Format.ClearAll", "Format.Section.Text", "Format.Text.Size",

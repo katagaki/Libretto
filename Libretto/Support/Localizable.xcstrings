@@ -106,6 +106,41 @@
         }
       }
     },
+    "ActionBar.EditEquation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Equation"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数式を編集"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수식 편집"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑公式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編輯方程式"
+          }
+        }
+      }
+    },
     "ActionBar.EditLink": {
       "extractionState": "manual",
       "localizations": {
@@ -3011,6 +3046,181 @@
         }
       }
     },
+    "Equation.Delete": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Equation"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数式を削除"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수식 삭제"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除公式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刪除方程式"
+          }
+        }
+      }
+    },
+    "Equation.Footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a/b is a fraction, x^2 and x_i are scripts, sqrt(x) a root, sum_(i=1)^n, prod and int big operators, and \\alpha, \\pm, \\infty and the like symbols. Brackets group."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a/b は分数、x^2 と x_i は上付き・下付き、sqrt(x) は根号、sum_(i=1)^n・prod・int は大型演算子、\\alpha・\\pm・\\infty などは記号です。かっこでまとめます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a/b는 분수, x^2와 x_i는 위 첨자와 아래 첨자, sqrt(x)는 근호, sum_(i=1)^n·prod·int는 큰 연산자, \\alpha·\\pm·\\infty 등은 기호입니다. 괄호로 묶습니다."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a/b 为分数，x^2 和 x_i 为上下标，sqrt(x) 为根式，sum_(i=1)^n、prod、int 为大型运算符，\\alpha、\\pm、\\infty 等为符号。用括号分组。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a/b 為分數，x^2 和 x_i 為上下標，sqrt(x) 為根號，sum_(i=1)^n、prod、int 為大型運算子，\\alpha、\\pm、\\infty 等為符號。用括號分組。"
+          }
+        }
+      }
+    },
+    "Equation.Insert": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insert Equation"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数式を挿入"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수식 삽입"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插入公式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "插入方程式"
+          }
+        }
+      }
+    },
+    "Equation.Placeholder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "x = (-b ± sqrt(b^2 - 4ac))/(2a)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "x = (-b ± sqrt(b^2 - 4ac))/(2a)"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "x = (-b ± sqrt(b^2 - 4ac))/(2a)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "x = (-b ± sqrt(b^2 - 4ac))/(2a)"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "x = (-b ± sqrt(b^2 - 4ac))/(2a)"
+          }
+        }
+      }
+    },
+    "Equation.Update": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update Equation"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数式を更新"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수식 업데이트"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新公式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新方程式"
+          }
+        }
+      }
+    },
     "Error.MissingBody": {
       "extractionState": "manual",
       "localizations": {
@@ -5457,6 +5667,41 @@
           "stringUnit": {
             "state": "translated",
             "value": "章節附註"
+          }
+        }
+      }
+    },
+    "Insert.Equation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Equation"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数式"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수식"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "公式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "方程式"
           }
         }
       }
@@ -8292,6 +8537,41 @@
           "stringUnit": {
             "state": "translated",
             "value": "交互參照"
+          }
+        }
+      }
+    },
+    "Panel.Equation.Title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Equation"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数式"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "수식"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "公式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "方程式"
           }
         }
       }

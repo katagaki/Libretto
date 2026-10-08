@@ -247,7 +247,7 @@ private final class ReadContext {
             let change = self.revision(from: child)
             return child.children.flatMap { inlines(from: $0, hyperlink: hyperlink, revision: change) }
         case "oMath", "oMathPara":
-            report.insert(.equations)
+            // Kept whole, and drawn; its text is what the reader and plain text show.
             return token(child, display: HeaderFooterReader.plainText(of: child), hyperlink: hyperlink, revision: revision)
         case "sdt":
             report.insert(.contentControls)

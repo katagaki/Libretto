@@ -53,6 +53,13 @@ struct FloatingActionBar: View {
                             tableGroup.id(Self.selectionActionsID)
                         } else if state.isOnImage {
                             pictureGroup.id(Self.selectionActionsID)
+                        } else if state.isOnEquation {
+                            group {
+                                panelAction("function", label: "ActionBar.EditEquation", panel: .equation)
+                                    .accessibilityIdentifier("editEquation")
+                            }
+                            .transition(.scale.combined(with: .opacity))
+                            .id(Self.selectionActionsID)
                         } else if state.isOnChange {
                             changeGroup.id(Self.selectionActionsID)
                         } else if state.isOnLink {
@@ -119,6 +126,7 @@ struct FloatingActionBar: View {
             }
             Button("Insert.Link", systemImage: "link") { state.presentedPanel = .link }
             Button("Insert.Symbol", systemImage: "character") { state.presentedPanel = .symbols }
+            Button("Insert.Equation", systemImage: "function") { state.presentedPanel = .equation }
             Button("Insert.Contents", systemImage: "list.bullet.rectangle") { controller?.insertTableOfContents() }
             Menu("Insert.Field", systemImage: "curlybraces") {
                 Button("Field.Date") { controller?.insertField("DATE \\@ \"d MMMM yyyy\"") }
