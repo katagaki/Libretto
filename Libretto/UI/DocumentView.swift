@@ -50,8 +50,7 @@ struct DocumentView: View {
                 history.record(from: old, to: new, scope: state.pendingScope)
                 state.pendingScope = .other
             }
-            .toolbar { undoToolbar }
-            .toolbar { moreToolbar }
+            .toolbar { navigationToolbar }
             .sheet(item: $state.presentedPanel) { panel in
                 NavigationStack {
                     panelContent(panel)
@@ -210,78 +209,148 @@ struct DocumentView: View {
         )
     }
 
+    /// On iPad the everyday actions sit in the bar and the rest in the "…"
+    /// menu. A phone has room only for undo and redo, so everything else is
+    /// gathered into the menu. A menu of its own rather than secondary
+    /// actions, which iPad would spread across the bar.
     @ToolbarContentBuilder
-    private var undoToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button("Toolbar.Undo", systemImage: "arrow.uturn.backward") {
-                state.controller?.flush()
-                state.codeEditor?.flush()
-                history.undo()
+    private var navigationToolbar: some ToolbarContent {
+        if horizontalSizeClass == .regular {
+            ToolbarItemGroup(placement: .primaryAction) { editButtons }
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+            ToolbarItemGroup(placement: .primaryAction) { undoButtons }
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+            ToolbarItem(placement: .primaryAction) { findButton }
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+            ToolbarItem(placement: .primaryAction) { shareButton }
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+            ToolbarItem(placement: .primaryAction) {
+                moreMenu {
+                    panelButtons
+                    viewModePicker
+                    Section { sourceCodeLink }
+                }
             }
-            .disabled(!history.canUndo)
-            .keyboardShortcut("z", modifiers: .command)
-            .accessibilityIdentifier("undo")
-            Button("Toolbar.Redo", systemImage: "arrow.uturn.forward") { history.redo() }
-                .disabled(!history.canRedo)
-                .keyboardShortcut("z", modifiers: [.command, .shift])
-                .accessibilityIdentifier("redo")
+        } else {
+            ToolbarItemGroup(placement: .primaryAction) { undoButtons }
+            ToolbarItem(placement: .primaryAction) {
+                moreMenu {
+                    Section { editButtons }
+                    Section {
+                        Button("Toolbar.Undo", systemImage: "arrow.uturn.backward", action: undo)
+                            .disabled(!history.canUndo)
+                        Button("Toolbar.Redo", systemImage: "arrow.uturn.forward") { history.redo() }
+                            .disabled(!history.canRedo)
+                    }
+                    Section { findButton }
+                    Section {
+                        shareButton
+                        sourceCodeLink
+                    }
+                    panelButtons
+                    viewModePicker
+                }
+            }
         }
     }
 
-    /// Everything but undo and redo is gathered into the navigation bar's "…"
-    /// menu, so the bar keeps to those two and the menu.
-    @ToolbarContentBuilder
-    private var moreToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .secondaryAction) {
-            Section {
-                ShareLink(item: export, preview: SharePreview(export.name, image: Image(systemName: "doc.text"))) {
-                    Label("Toolbar.Share.Label", systemImage: "square.and.arrow.up")
-                }
-                Button("Toolbar.Find", systemImage: "magnifyingglass", action: find)
-                    .accessibilityIdentifier("find")
-                if !isCode {
-                    Button("Toolbar.Comments", systemImage: "text.bubble") { openPanel(.comments) }
-                        .accessibilityIdentifier("comments")
-                    Button("Toolbar.Review", systemImage: "pencil.and.list.clipboard") { openPanel(.review) }
-                        .accessibilityIdentifier("review")
-                    Button("Toolbar.Notes", systemImage: "text.append") { openPanel(.notes) }
-                        .accessibilityIdentifier("notes")
-                    Button("Toolbar.Navigator", systemImage: "list.bullet.indent") {
-                        state.navigatorTab = .headings
-                        openPanel(.navigator)
-                    }
-                    .accessibilityIdentifier("navigator")
-                    Button("Toolbar.UpdateFields", systemImage: "arrow.clockwise") {
-                        setMode(.page)
-                        state.controller?.updateTableOfContents()
-                        state.controller?.updateFields()
-                    }
-                }
-                if !document.unsupportedFeatures.isEmpty {
-                    Button("Toolbar.UnsupportedFeatures.Label", systemImage: "exclamationmark.triangle") {
-                        state.isShowingUnsupportedFeatureNotice = true
-                    }
-                    .accessibilityIdentifier("unsupportedFeatures")
-                }
-            }
+    private func moreMenu(@ViewBuilder content: () -> some View) -> some View {
+        Menu(content: content) {
+            Label("Toolbar.More", systemImage: "ellipsis")
+        }
+    }
+
+    @ViewBuilder
+    private var editButtons: some View {
+        Button("Toolbar.Cut", systemImage: "scissors") { sendEditAction(#selector(UIResponderStandardEditActions.cut(_:))) }
+        Button("Toolbar.Copy", systemImage: "document.on.document") { sendEditAction(#selector(UIResponderStandardEditActions.copy(_:))) }
+        Button("Toolbar.Paste", systemImage: "document.on.clipboard") { sendEditAction(#selector(UIResponderStandardEditActions.paste(_:))) }
+    }
+
+    @ViewBuilder
+    private var undoButtons: some View {
+        Button("Toolbar.Undo", systemImage: "arrow.uturn.backward", action: undo)
+            .disabled(!history.canUndo)
+            .keyboardShortcut("z", modifiers: .command)
+            .accessibilityIdentifier("undo")
+        Button("Toolbar.Redo", systemImage: "arrow.uturn.forward") { history.redo() }
+            .disabled(!history.canRedo)
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .accessibilityIdentifier("redo")
+    }
+
+    private var shareButton: some View {
+        ShareLink(item: export, preview: SharePreview(export.name, image: Image(systemName: "doc.text"))) {
+            Label("Toolbar.Share.Label", systemImage: "square.and.arrow.up")
+        }
+    }
+
+    private var findButton: some View {
+        Button("Toolbar.Find", systemImage: "magnifyingglass", action: find)
+            .accessibilityIdentifier("find")
+    }
+
+    private var sourceCodeLink: some View {
+        Link(destination: URL(string: "https://github.com/katagaki/Libretto")!) {
+            Label("Toolbar.SourceCode", systemImage: "chevron.left.forwardslash.chevron.right")
+        }
+    }
+
+    @ViewBuilder
+    private var panelButtons: some View {
+        Section {
             if !isCode {
-                Section {
-                    Picker(selection: Binding(get: { state.viewMode }, set: { setMode($0) })) {
-                        ForEach(ViewMode.allCases) { mode in
-                            Label(mode.label, systemImage: mode.symbolName).tag(mode)
-                        }
-                    } label: {
-                        Label("Toolbar.ViewMode", systemImage: state.viewMode.symbolName)
-                    }
-                    .accessibilityIdentifier("viewMode")
+                Button("Toolbar.Comments", systemImage: "text.bubble") { openPanel(.comments) }
+                    .accessibilityIdentifier("comments")
+                Button("Toolbar.Review", systemImage: "pencil.and.list.clipboard") { openPanel(.review) }
+                    .accessibilityIdentifier("review")
+                Button("Toolbar.Notes", systemImage: "text.append") { openPanel(.notes) }
+                    .accessibilityIdentifier("notes")
+                Button("Toolbar.Navigator", systemImage: "list.bullet.indent") {
+                    state.navigatorTab = .headings
+                    openPanel(.navigator)
+                }
+                .accessibilityIdentifier("navigator")
+                Button("Toolbar.UpdateFields", systemImage: "arrow.clockwise") {
+                    setMode(.page)
+                    state.controller?.updateTableOfContents()
+                    state.controller?.updateFields()
                 }
             }
-            Section {
-                Link(destination: URL(string: "https://github.com/katagaki/Libretto")!) {
-                    Label("Toolbar.SourceCode", systemImage: "chevron.left.forwardslash.chevron.right")
+            if !document.unsupportedFeatures.isEmpty {
+                Button("Toolbar.UnsupportedFeatures.Label", systemImage: "exclamationmark.triangle") {
+                    state.isShowingUnsupportedFeatureNotice = true
                 }
+                .accessibilityIdentifier("unsupportedFeatures")
             }
         }
+    }
+
+    @ViewBuilder
+    private var viewModePicker: some View {
+        if !isCode {
+            Section {
+                Picker(selection: Binding(get: { state.viewMode }, set: { setMode($0) })) {
+                    ForEach(ViewMode.allCases) { mode in
+                        Label(mode.label, systemImage: mode.symbolName).tag(mode)
+                    }
+                } label: {
+                    Label("Toolbar.ViewMode", systemImage: state.viewMode.symbolName)
+                }
+                .accessibilityIdentifier("viewMode")
+            }
+        }
+    }
+
+    private func undo() {
+        state.controller?.flush()
+        state.codeEditor?.flush()
+        history.undo()
+    }
+
+    /// Sends cut, copy or paste to whichever text view is being edited.
+    private func sendEditAction(_ action: Selector) {
+        UIApplication.shared.sendAction(action, to: nil, from: nil, for: nil)
     }
 
     private var export: DocumentExport {
